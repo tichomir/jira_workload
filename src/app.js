@@ -5,6 +5,8 @@ const express = require('express');
 
 const oauthRouter = require('./routes/oauth');
 const integrationsRouter = require('./routes/integrations');
+const backupRouter = require('./routes/backup');
+const { assertPurgeCascadeAllowed } = require('./services/purgeCascade');
 
 const app = express();
 
@@ -19,6 +21,24 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 // API v1 routes
 app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/integrations', integrationsRouter);
+app.use('/api/v1/integrations', backupRouter);
+
+// Purge cascade endpoint (platform-layer, not scoped to a single integration)
+app.post('/api/v1/purge/cascade', (req, res) => {
+  const { nodeType, targetId } = req.body || {};
+  if (!nodeType) {
+    return res.status(400).json({ error: 'MISSING_NODE_TYPE', message: 'nodeType is required' });
+  }
+  try {
+    assertPurgeCascadeAllowed(nodeType);
+  } catch (err) {
+    if (err.code === 'PURGE_CASCADE_BOUNDARY_VIOLATION') {
+      return res.status(409).json({ error: err.code, message: err.message, nodeType });
+    }
+    throw err;
+  }
+  return res.status(200).json({ nodeType, targetId: targetId || null, status: 'cascade_accepted' });
+});
 
 // Frontend HTML routes
 app.get('/integrations/jira/connect', (req, res) => {

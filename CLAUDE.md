@@ -54,3 +54,26 @@ Deliverables:
 - ✅ QA: end-to-end test suite for OAuth paths, scope validation, multi-site, degradation, and lifecycle — Qa Engineer (◉ Deep, 5 SP)
 
 ---
+### Sprint 2 | 2026-04-30 | ✅ done | 23 SP
+**Goal:** [Phase: Backup Discovery and Data Ingestion]
+Implement the full Jira object discovery and backup pipeline: full JQL enumeration on first run and incremental JQL cursor on subsequent runs, dynamic webhook registration for real-time deltas, attachment binary materialisation with deduplication, site-level shared object enumeration (Workflows, Custom Field Definitions and Contexts), and backup policy configuration (SLA Domain, RPO, retention, archive scope attributes, Data Scope refresh).
+
+Deliverables:
+- Full JQL enumeration (GET /search?project={key} ORDER BY updated ASC) on first backup run per project
+- Incremental JQL cursor (updated >= lastBackupTimestamp ORDER BY updated ASC) on subsequent runs
+- Dynamic webhook registration via manage:jira-webhook for issue_created, issue_updated, issue_deleted events
+- Attachment binary download (GET /rest/api/3/attachment/content/{id}) for new attachment IDs; sidecar-only carry-forward for unchanged IDs
+- Site-level enumeration of JiraWorkflowNode (GET /rest/api/3/workflow/search) and JiraCustomFieldDefinitionNode (GET /rest/api/3/field) on every backup run
+- JiraCustomFieldContextNode enumeration per field via GET /rest/api/3/field/{fieldId}/context and /context/option
+- Default SLA Domain (RPO=24h, retention=365d), Configuration A policy model, Secondary/Archive Copy capabilities
+- Archive scope attributes: archived=true on JiraProjectNode, statusCategory=Done on JiraIssueNode, state=closed on JiraSprintNode
+- Data Scope refresh interval default (24h) and manual Sync Now trigger
+- Purge cascade boundary enforcement: JiraWorkflowNode, JiraCustomFieldDefinitionNode, JiraCustomFieldContextNode excluded from purge cascade at platform layer
+
+**Delivered:**
+- ✅ Design backup discovery pipeline architecture — Software Architect (◈ Standard, 3 SP)
+- ✅ Define backup policy configuration schema and constants — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Implement JQL enumeration, incremental cursor, webhook registration, and attachment materialisation backend — Backend Developer (◉ Deep, 13 SP)
+- ✅ QA: end-to-end and unit test suite for backup discovery pipeline — Qa Engineer (◉ Deep, 5 SP)
+
+---

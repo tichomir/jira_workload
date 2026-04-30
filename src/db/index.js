@@ -22,6 +22,53 @@ const lifecycleEvents = new Map();
 // ScopeValidationResult records (keyed by id)
 const scopeValidations = new Map();
 
+// ---------------------------------------------------------------------------
+// Sprint 2 — Backup Discovery and Data Ingestion
+// ---------------------------------------------------------------------------
+
+// BackupRunState records (keyed by id)
+// Shape: { id, integrationId, cloudId, projectKey, lastBackupTimestamp, lastRunStatus, lastRunCompletedAt }
+const backupRunStates = new Map();
+
+// WebhookRegistration records (keyed by id)
+// Shape: { id, integrationId, cloudId, webhookId, jqlFilter, events, registeredAt, expiresAt, deletedAt }
+const webhookRegistrations = new Map();
+
+// AttachmentManifestEntry records (keyed by id)
+// Shape: { id, backupPointId, attachmentId, issueKey, filename, mimeType, sizeBytes,
+//          binaryStorageRef, sidecarOnly, priorManifestEntryId, downloadedAt, checksum }
+const attachmentManifestEntries = new Map();
+
+// DataScopeRefreshConfig records (keyed by integrationId)
+// Shape: { id, integrationId, refreshIntervalHours, lastRefreshedAt, nextScheduledAt, manualSyncPending }
+const dataScopeRefreshConfigs = new Map();
+
+// SyncJob records (keyed by id)
+// Shape: { id, integrationId, status, triggeredAt, completedAt, type }
+const syncJobs = new Map();
+
+// SLADomain records (keyed by id)
+// Shape: { id, integrationId, name, rpoHours, retentionDays, policyModel, secondaryCopy, archiveCopy, createdAt, updatedAt }
+const slaDomains = new Map();
+
+// JiraIssueNode records (keyed by integrationId:issueKey)
+const issueNodes = new Map();
+
+// JiraProjectNode records (keyed by integrationId:projectKey)
+const projectNodes = new Map();
+
+// JiraSprintNode records (keyed by integrationId:sprintId)
+const sprintNodes = new Map();
+
+// JiraWorkflowNode records (keyed by cloudId:workflowId)
+const workflowNodes = new Map();
+
+// JiraCustomFieldDefinitionNode records (keyed by cloudId:fieldId)
+const customFieldDefinitions = new Map();
+
+// JiraCustomFieldContextNode records (keyed by cloudId:fieldId:contextId)
+const customFieldContextNodes = new Map();
+
 /**
  * Clean up expired state records (called lazily).
  */
@@ -41,4 +88,17 @@ module.exports = {
   lifecycleEvents,
   scopeValidations,
   pruneExpiredStates,
+  // Sprint 2
+  backupRunStates,
+  webhookRegistrations,
+  attachmentManifestEntries,
+  dataScopeRefreshConfigs,
+  syncJobs,
+  slaDomains,
+  issueNodes,
+  projectNodes,
+  sprintNodes,
+  workflowNodes,
+  customFieldDefinitions,
+  customFieldContextNodes,
 };
