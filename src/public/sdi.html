@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sensitive Data Intelligence — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ── SDI-specific styles ── */
+
+    /* Skeleton loader */
+    .skeleton-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+    .skeleton-row {
+      height: 48px;
+      background: linear-gradient(90deg, var(--bg) 25%, #e8eaed 50%, var(--bg) 75%);
+      background-size: 200% 100%;
+      border-radius: var(--radius);
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-row.short { height: 32px; }
+    .skeleton-row.wide  { height: 64px; }
+
+    /* Empty and error states */
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--text-muted); }
+    .empty-state-icon { font-size: 36px; margin-bottom: 10px; }
+    .empty-state p { font-size: 14px; }
+    .inline-error {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 12px; background: var(--danger-bg);
+      border-radius: var(--radius); color: var(--danger);
+      font-size: 13px; margin-top: 12px;
+    }
+
+    /* Summary stat boxes */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 600px) { .stat-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 380px) { .stat-grid { grid-template-columns: 1fr; } }
+
+    .stat-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+    }
+    .stat-box-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--primary);
+      line-height: 1.1;
+    }
+    .stat-box-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Data element breakdown */
+    .element-list { display: flex; flex-direction: column; gap: 10px; }
+    .element-row {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 12px 16px;
+      background: var(--white);
+    }
+    .element-row-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .element-icon { font-size: 18px; flex-shrink: 0; }
+    .element-name { font-size: 14px; font-weight: 600; flex: 1; }
+    .element-count {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary);
+      min-width: 40px;
+      text-align: right;
+    }
+    .element-count.zero { color: var(--text-muted); }
+    .element-count-label { font-size: 11px; color: var(--text-muted); text-align: right; }
+    .element-filetypes {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .filetype-chip {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 3px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+    .element-no-findings { color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+    /* File type breakdown table */
+    .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .result-table th {
+      text-align: left; padding: 8px 10px;
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .result-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .result-table tr:last-child td { border-bottom: none; }
+    .result-table tr:hover td { background: var(--primary-light); }
+
+    /* Regulation section */
+    .regulation-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) { .regulation-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 380px) { .regulation-grid { grid-template-columns: 1fr; } }
+
+    .regulation-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .regulation-card.active {
+      border-color: #FF8B00;
+      background: var(--warning-bg);
+    }
+    .regulation-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .regulation-status-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      width: fit-content;
+    }
+    .badge-active-reg {
+      background: #FF8B00;
+      color: #fff;
+    }
+    .badge-shown-reg {
+      background: var(--bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .regulation-rationale {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Section divider */
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Backup point selector row */
+    .bp-selector-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .bp-selector-row .form-group { margin-bottom: 0; flex: 1; }
+
+    /* Scan meta info */
+    .scan-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: var(--radius);
+      border-left: 3px solid var(--primary);
+    }
+  </style>
+</head>
+<body>
+<div class="container" style="max-width: 1000px;">
+
+  <div class="page-header">
+    <h1>Sensitive Data Intelligence</h1>
+    <p>Scan backed-up Jira data for sensitive data elements and surface applicable regulations.</p>
+  </div>
+
+  <!-- ── Backup Point Selector ── -->
+  <div class="card mb-16" id="bp-selector-card">
+    <div class="card-title">Select Backup Point</div>
+    <div class="card-subtitle">Enter a backup point ID to load its sensitive data findings. Use the same IDs as the Browse &amp; Restore panels.</div>
+    <div class="bp-selector-row">
+      <div class="form-group">
+        <label class="form-label" for="sdi-backup-id">Backup Point ID <span class="req">*</span></label>
+        <input
+          type="text"
+          id="sdi-backup-id"
+          class="form-input"
+          placeholder="e.g. bp-001"
+          aria-label="Backup point ID (required)"
+          aria-describedby="sdi-backup-hint"
+        />
+        <div id="sdi-backup-hint" style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+          Enter the backup point ID, then click Load Findings.
+        </div>
+      </div>
+      <button
+        class="btn btn-primary"
+        id="btn-sdi-load"
+        onclick="loadSdiFindings()"
+        aria-label="Load SDI findings for selected backup point"
+        style="white-space:nowrap;height:38px;"
+      >
+        Load Findings
+      </button>
+    </div>
+  </div>
+
+  <!-- ── SDI Results Panel ── -->
+  <div id="sdi-panel">
+
+    <!-- Loading skeleton -->
+    <div id="sdi-skeleton" class="card hidden" aria-live="polite" aria-label="Loading SDI findings">
+      <div class="skeleton-list">
+        <div class="skeleton-row wide"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="sdi-error" class="card hidden" role="alert">
+      <div class="inline-error" style="margin-top:0">
+        <span>&#9888;</span>
+        <span id="sdi-error-msg">An error occurred while loading findings.</span>
+      </div>
+    </div>
+
+    <!-- Zero-findings empty state -->
+    <div id="sdi-empty" class="card hidden" role="status">
+      <div class="empty-state">
+        <div class="empty-state-icon">&#128274;</div>
+        <p><strong>No sensitive data detected</strong></p>
+        <p style="margin-top:8px">No sensitive data elements were found in the backed-up files for this backup point.</p>
+      </div>
+    </div>
+
+    <!-- Findings content -->
+    <div id="sdi-content" class="hidden">
+
+      <!-- Scan summary -->
+      <div class="card mb-16" id="sdi-summary-card">
+        <div class="card-title">Scan Summary</div>
+        <div id="sdi-scan-meta" class="scan-meta hidden"></div>
+        <div class="stat-grid" id="sdi-stat-grid">
+          <div class="stat-box">
+            <div class="stat-box-value" id="stat-total-matches">—</div>
+            <div class="stat-box-label">Total Matches</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-value" id="stat-element-types">—</div>
+            <div class="stat-box-label">Data Element Types</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-value" id="stat-file-types">—</div>
+            <div class="stat-box-label">Affected File Types</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Element Type Breakdown -->
+      <div class="card mb-16">
+        <div class="section-title">Data Element Type Breakdown</div>
+        <div class="element-list" id="sdi-element-list" role="list" aria-label="Sensitive data element type breakdown">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- File Type Breakdown -->
+      <div class="card mb-16" id="sdi-filetype-card">
+        <div class="section-title">File Type Breakdown</div>
+        <div id="sdi-filetype-results" role="region" aria-label="File type breakdown">
+          <table class="result-table" aria-label="Findings by file type">
+            <thead>
+              <tr>
+                <th scope="col">File Type</th>
+                <th scope="col">Data Element Types Found</th>
+                <th scope="col">Total Matches</th>
+              </tr>
+            </thead>
+            <tbody id="sdi-filetype-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Regulation Surface -->
+      <div class="card mb-16">
+        <div class="section-title">Applicable Regulations</div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          Regulations are surfaced based on detected data element types.
+          <strong>Active</strong> regulations are directly implicated by findings.
+          <strong>Shown</strong> regulations are contextually relevant for awareness.
+        </p>
+        <div class="regulation-grid" id="sdi-regulation-grid" role="list" aria-label="Applicable regulations">
+          <!-- Rendered by JS — HIPAA is never included -->
+        </div>
+      </div>
+
+    </div><!-- /#sdi-content -->
+
+  </div><!-- /#sdi-panel -->
+
+</div><!-- /.container -->
+
+<script>
+'use strict';
+
+const API = '/api';
+
+/* ── Utilities ────────────────────────────────────────────────────── */
+function qs(id) { return document.getElementById(id); }
+function show(id) { const el = qs(id); if (el) el.classList.remove('hidden'); }
+function hide(id) { const el = qs(id); if (el) el.classList.add('hidden'); }
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ── Data element type metadata ──────────────────────────────────── */
+const DATA_ELEMENT_META = [
+  {
+    type: 'EMAIL',
+    label: 'Email Address',
+    icon: '&#9993;',
+    description: 'Email addresses found in backed-up files.',
+  },
+  {
+    type: 'CREDENTIAL',
+    label: 'Credential / API Key',
+    icon: '&#128273;',
+    description: 'Credentials, API keys, tokens, and secrets detected by pattern and entropy analysis.',
+  },
+  {
+    type: 'CREDIT_CARD',
+    label: 'Credit Card Number (PAN)',
+    icon: '&#128179;',
+    description: 'Primary Account Numbers (PANs) validated with Luhn algorithm.',
+  },
+  {
+    type: 'PHONE',
+    label: 'Phone Number',
+    icon: '&#128222;',
+    description: 'Phone numbers with minimum digit count threshold applied.',
+  },
+];
+
+/**
+ * REGULATION DEFINITIONS — hardcoded to guarantee HIPAA never appears.
+ * Status is determined from the API response at render time.
+ */
+const REGULATION_DEFS = [
+  { id: 'GDPR',    name: 'GDPR',    rationale: 'Personal data identifiers (email, phone) subject to GDPR Art. 4(1).' },
+  { id: 'CCPA',    name: 'CCPA',    rationale: 'California personal information (email, phone) under CCPA §1798.140(o).' },
+  { id: 'PCI_DSS', name: 'PCI DSS', rationale: 'Primary Account Numbers (credit card) in scope under PCI DSS Req. 3.' },
+  { id: 'DORA',    name: 'DORA',    rationale: 'Digital operational resilience; shown for data handling awareness.' },
+  { id: 'NIS2',    name: 'NIS2',    rationale: 'Network and information security; shown for incident reporting awareness.' },
+  { id: 'SOC2',    name: 'SOC 2',   rationale: 'Trust service criteria; shown for data handling awareness.' },
+  // HIPAA: intentionally absent. Health/medical identifiers are not in scope.
+];
+
+/* ── State ───────────────────────────────────────────────────────── */
+let _currentBackupPointId = null;
+
+/* ── Main load function ──────────────────────────────────────────── */
+async function loadSdiFindings() {
+  const backupPointId = qs('sdi-backup-id').value.trim();
+  if (!backupPointId) {
+    showSdiError('Backup Point ID is required.');
+    return;
+  }
+
+  _currentBackupPointId = backupPointId;
+
+  // Show loading skeleton
+  hide('sdi-error');
+  hide('sdi-empty');
+  hide('sdi-content');
+  show('sdi-skeleton');
+
+  qs('btn-sdi-load').disabled = true;
+  qs('btn-sdi-load').textContent = 'Loading…';
+
+  try {
+    const params = new URLSearchParams({ backupPointId });
+    const res = await fetch(`${API}/sdi/findings?${params}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      showSdiError(data.message || `Request failed with status ${res.status}`);
+      return;
+    }
+
+    // Guard: ensure we're still rendering for the same backup point
+    if (_currentBackupPointId !== backupPointId) return;
+
+    renderFindings(data);
+
+  } catch (err) {
+    showSdiError(`Network error: ${escHtml(err.message)}`);
+  } finally {
+    hide('sdi-skeleton');
+    qs('btn-sdi-load').disabled = false;
+    qs('btn-sdi-load').textContent = 'Load Findings';
+  }
+}
+
+/* ── Render functions ────────────────────────────────────────────── */
+
+function showSdiError(msg) {
+  hide('sdi-skeleton');
+  hide('sdi-empty');
+  hide('sdi-content');
+  qs('sdi-error-msg').textContent = msg;
+  show('sdi-error');
+}
+
+function renderFindings(data) {
+  const findings = data.findings || [];
+  const regulations = data.regulations || [];
+
+  // Empty state: no findings
+  if (!findings.length) {
+    hide('sdi-skeleton');
+    hide('sdi-error');
+    hide('sdi-content');
+    show('sdi-empty');
+    return;
+  }
+
+  // Build lookup: { dataElementType: { fileType: matchCount } }
+  const byElementType = {};
+  const byFileType = {};
+  let totalMatches = 0;
+
+  for (const f of findings) {
+    totalMatches += f.matchCount;
+
+    if (!byElementType[f.dataElementType]) byElementType[f.dataElementType] = {};
+    byElementType[f.dataElementType][f.fileType] =
+      (byElementType[f.dataElementType][f.fileType] || 0) + f.matchCount;
+
+    if (!byFileType[f.fileType]) byFileType[f.fileType] = {};
+    byFileType[f.fileType][f.dataElementType] =
+      (byFileType[f.fileType][f.dataElementType] || 0) + f.matchCount;
+  }
+
+  const elementTypesWithFindings = Object.keys(byElementType).length;
+  const fileTypesWithFindings = Object.keys(byFileType).length;
+
+  // Stat boxes
+  qs('stat-total-matches').textContent = totalMatches.toLocaleString();
+  qs('stat-element-types').textContent = elementTypesWithFindings;
+  qs('stat-file-types').textContent    = fileTypesWithFindings;
+
+  // Scan meta line
+  const metaEl = qs('sdi-scan-meta');
+  metaEl.textContent =
+    `Backup point: ${data.backupPointId} — ${findings.length} finding dimension${findings.length !== 1 ? 's' : ''} across ${fileTypesWithFindings} file type${fileTypesWithFindings !== 1 ? 's' : ''}.`;
+  show('sdi-scan-meta');
+
+  // Render data element type breakdown
+  renderElementBreakdown(byElementType);
+
+  // Render file type breakdown
+  renderFileTypeBreakdown(byFileType);
+
+  // Render regulations (HIPAA is structurally excluded)
+  renderRegulations(regulations);
+
+  // Show content
+  hide('sdi-skeleton');
+  hide('sdi-error');
+  hide('sdi-empty');
+  show('sdi-content');
+}
+
+/**
+ * Render all four data element types — zero-count types always visible.
+ */
+function renderElementBreakdown(byElementType) {
+  const container = qs('sdi-element-list');
+  container.innerHTML = '';
+
+  for (const meta of DATA_ELEMENT_META) {
+    const elementFindings = byElementType[meta.type] || {};
+    const totalCount = Object.values(elementFindings).reduce((a, b) => a + b, 0);
+    const fileTypes = Object.keys(elementFindings).sort();
+    const hasFindings = totalCount > 0;
+
+    const div = document.createElement('div');
+    div.className = 'element-row';
+    div.setAttribute('role', 'listitem');
+    div.setAttribute('aria-label',
+      `${meta.label}: ${totalCount} match${totalCount !== 1 ? 'es' : ''}`);
+
+    const fileTypeChips = hasFindings
+      ? fileTypes.map(ft =>
+          `<span class="filetype-chip">.${escHtml(ft)}</span>`
+        ).join('')
+      : `<span class="element-no-findings">No matches detected</span>`;
+
+    div.innerHTML = `
+      <div class="element-row-header">
+        <span class="element-icon" aria-hidden="true">${meta.icon}</span>
+        <span class="element-name">${escHtml(meta.label)}</span>
+        <div style="text-align:right">
+          <div class="element-count ${hasFindings ? '' : 'zero'}"
+               aria-label="${totalCount} matches">
+            ${totalCount.toLocaleString()}
+          </div>
+          <div class="element-count-label">matches</div>
+        </div>
+      </div>
+      <div class="element-filetypes" aria-label="File types: ${hasFindings ? fileTypes.map(ft => '.'+ft).join(', ') : 'none'}">
+        ${fileTypeChips}
+      </div>`;
+
+    container.appendChild(div);
+  }
+}
+
+/**
+ * Render file type breakdown table — only file types present in findings.
+ */
+function renderFileTypeBreakdown(byFileType) {
+  const tbody = qs('sdi-filetype-tbody');
+  tbody.innerHTML = '';
+
+  // Sort by total match count descending
+  const sortedFileTypes = Object.entries(byFileType)
+    .sort(([, aMap], [, bMap]) => {
+      const aTotal = Object.values(aMap).reduce((s, n) => s + n, 0);
+      const bTotal = Object.values(bMap).reduce((s, n) => s + n, 0);
+      return bTotal - aTotal;
+    });
+
+  for (const [fileType, elementMap] of sortedFileTypes) {
+    const totalForFile = Object.values(elementMap).reduce((s, n) => s + n, 0);
+
+    // Build human-readable labels for found element types
+    const foundTypes = Object.keys(elementMap)
+      .map(et => DATA_ELEMENT_META.find(m => m.type === et))
+      .filter(Boolean)
+      .map(m => `<span class="filetype-chip" style="font-family:inherit;font-size:12px">${escHtml(m.label)}</span>`)
+      .join(' ');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <code class="font-mono" style="font-size:12px">.${escHtml(fileType)}</code>
+      </td>
+      <td>${foundTypes}</td>
+      <td style="font-weight:600;color:var(--primary)">${totalForFile.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+/**
+ * Render exactly six regulations — HIPAA structurally excluded by REGULATION_DEFS.
+ * Status ('active'|'shown') is driven by the API response.
+ */
+function renderRegulations(apiRegulations) {
+  const container = qs('sdi-regulation-grid');
+  container.innerHTML = '';
+
+  // Build lookup from API response by regulation name
+  const apiStatusByName = {};
+  for (const r of apiRegulations) {
+    apiStatusByName[r.name] = r.status;
+  }
+
+  for (const reg of REGULATION_DEFS) {
+    const status = apiStatusByName[reg.name] || 'shown';
+    const isActive = status === 'active';
+
+    const div = document.createElement('div');
+    div.className = `regulation-card${isActive ? ' active' : ''}`;
+    div.setAttribute('role', 'listitem');
+    div.setAttribute('aria-label',
+      `${reg.name}: ${isActive ? 'Active' : 'Shown'}`);
+
+    div.innerHTML = `
+      <div class="regulation-name">${escHtml(reg.name)}</div>
+      <span class="regulation-status-badge ${isActive ? 'badge-active-reg' : 'badge-shown-reg'}"
+            aria-label="Status: ${isActive ? 'Active' : 'Shown'}">
+        ${isActive ? 'Active' : 'Shown'}
+      </span>
+      <div class="regulation-rationale">${escHtml(reg.rationale)}</div>`;
+
+    container.appendChild(div);
+  }
+}
+
+/* ── Keyboard support: submit on Enter in backup-point field ──────── */
+qs('sdi-backup-id').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    loadSdiFindings();
+  }
+});
+
+/* ── Watch backup-point input: re-fetch when value changes ────────── */
+qs('sdi-backup-id').addEventListener('change', () => {
+  // Clear results when user changes the backup point ID manually
+  const val = qs('sdi-backup-id').value.trim();
+  if (val !== _currentBackupPointId) {
+    hide('sdi-content');
+    hide('sdi-empty');
+    hide('sdi-error');
+    hide('sdi-skeleton');
+    _currentBackupPointId = null;
+  }
+});
+</script>
+</body>
+</html>

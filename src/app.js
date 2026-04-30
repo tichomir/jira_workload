@@ -10,6 +10,7 @@ const searchRouter = require('./routes/search');
 const backupPointsRouter = require('./routes/backupPoints');
 const preferencesRouter = require('./routes/preferences');
 const restoreRouter = require('./routes/restore');
+const sdiRouter = require('./routes/sdi');
 const { assertPurgeCascadeAllowed } = require('./services/purgeCascade');
 
 const app = express();
@@ -35,10 +36,14 @@ app.use('/api/v1/restore', restoreRouter);
 app.use('/api/v1/backup-points', backupPointsRouter);
 app.use('/api/v1/preferences', preferencesRouter);
 
+// Sprint 5 — SDI Teaser routes
+app.use('/api/v1/sdi', sdiRouter);
+
 // Also mount at /api/ (without v1) for acceptance criteria compatibility
 app.use('/api/search', searchRouter);
 app.use('/api/backup-points', backupPointsRouter);
 app.use('/api/preferences', preferencesRouter);
+app.use('/api/sdi', sdiRouter);
 
 // Purge cascade endpoint (platform-layer, not scoped to a single integration)
 app.post('/api/v1/purge/cascade', (req, res) => {

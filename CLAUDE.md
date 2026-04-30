@@ -51,6 +51,30 @@
 - Comment author and reporter attribution via ADF header prepend, not API fields (ADR-004): Jira Cloud API does not allow setting `author` to arbitrary users.
 - Cross-site custom field mapping is a blocking gate for required fields (ADR-005): silent field ID mismatch would corrupt restored issues.
 
+### Sprint 5 — Sensitive Data Intelligence (SDI) Teaser (2026-04-30)
+**Goal:** Deliver SDI teaser module scanning backed-up Jira data for sensitive data elements.
+
+**Architect:** software_architect
+
+**Deliverables produced:**
+- `docs/architecture/sdi-architecture.md` — Full SDI teaser pipeline architecture:
+  - End-to-end pipeline diagram: backup storage → file enumerator → file extractor → pattern scanner → findings aggregator → regulation mapper → results API
+  - Detection patterns for all four data element types (Email, Credential/API Key, Credit Card/PAN, Phone Number) with positive and negative test examples
+  - File-type extraction strategy for all 13 supported file types (text-native direct read; binary extraction for .pdf via pdf-parse and .docx via OOXML unzip)
+  - Regulation mapping schema: GDPR/CCPA/PCI DSS as Active; DORA/NIS2/SOC 2 as Shown; HIPAA explicitly excluded with rationale
+  - Findings data model: SdiScanHit (in-memory only), SdiFindingSummary (persisted), SdiScanResult (top-level)
+  - Full REST API contract for trigger, get result, and list endpoints
+  - 3 ADRs: pattern library approach, PII masking in stored findings, scan result storage contract
+- `packages/shared-types/src/sdi.ts` — Typed interfaces and constants exported for backend and frontend consumption
+
+**Key decisions:**
+- Inline regex patterns chosen over NLP/ML models: deterministic, auditable, no data leaves deployment boundary (ADR-SDI-001).
+- Raw matched strings never stored, logged, or returned via API — match counts only (ADR-SDI-002).
+- Findings persisted at per-dimension grain (backupPointId × fileType × dataElementType); per-file hits are in-memory only (ADR-SDI-003).
+- HIPAA excluded: no health/medical identifier patterns in scope; including HIPAA without detection would be a false positive at regulation level.
+- Luhn algorithm applied post-match for PAN candidates; entropy check for credential Pattern C; placeholder allowlist for emails and credentials.
+- Binary files (.pdf, .docx) capped at 50 MB; extraction failures are non-blocking (SDI_EXTRACTION_WARN).
+
 ## Conventions
 - All architecture docs live in `docs/architecture/`.
 - Sequence diagrams use Mermaid `sequenceDiagram` blocks.
@@ -142,5 +166,22 @@ Deliverables:
 - ✅ Define restore pipeline constants, schemas, and conflict-mode configuration — Backend Developer (⚡ Quick, 2 SP)
 - ✅ Implement restore engine backend: pipeline, validation, conflict modes, destinations, and API constraint handlers — Backend Developer (◉ Deep, 13 SP)
 - ✅ QA: end-to-end and unit test suite for restore engine pipeline — Qa Engineer (◉ Deep, 5 SP)
+
+---
+### Sprint 5 | 2026-04-30 | ✅ done | 18 SP
+**Goal:** [Phase: Sensitive Data Intelligence (SDI) Teaser]
+Deliver the SDI teaser module that scans backed-up Jira data for four sensitive data element types (Email Address, Credential/API Key, Credit Card Number/PAN, Phone Number) across the defined file type set, and surfaces applicable regulations (GDPR, CCPA, PCI DSS as Active; DORA, NIS2, SOC 2 as Shown). HIPAA excluded.
+
+Deliverables:
+- SDI scan pipeline targeting backed-up Jira JSON and attachment content across: .json, .xml, .csv, .tsv, .pdf, .docx, .txt, .md, .yaml, .yml, .env, .properties, .toml
+- Detection of four data element types: Email Address, Credential/API Key, Credit Card Number (PAN), Phone Number
+- Regulation surface: GDPR, CCPA, PCI DSS displayed as Active; DORA, NIS2, SOC 2 displayed as Shown; HIPAA excluded
+- SDI teaser results UI surfacing findings per backup point with data element type and file type breakdown
+
+**Delivered:**
+- ✅ Design SDI scan pipeline architecture and detection schemas — Software Architect (◈ Standard, 3 SP)
+- ✅ Define SDI constants, regulation config, and detection pattern registry — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Implement SDI scan pipeline backend: extractors, pattern scanner, findings API — Backend Developer (◉ Deep, 8 SP)
+- ✅ Implement SDI teaser results UI: findings surface per backup point — Frontend Developer (◉ Deep, 5 SP)
 
 ---

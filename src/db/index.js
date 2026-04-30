@@ -114,6 +114,20 @@ const objectSnapshots = new Map();
 // Sprint 4 — Restore Engine
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Sprint 5 — Sensitive Data Intelligence (SDI) Teaser
+// ---------------------------------------------------------------------------
+
+// SdiScanResult records (keyed by scanId)
+// Shape: { id, backupPointId, integrationId, cloudId, status, startedAt, completedAt,
+//          errorMessage, totalFilesScanned, totalFilesSkipped, totalMatchCount,
+//          findings: [SdiFindingSummary], regulationMap: [SdiRegulationEntry] }
+const sdiScanResults = new Map();
+
+// ---------------------------------------------------------------------------
+// Sprint 4 — Restore Engine
+// ---------------------------------------------------------------------------
+
 // RestoreJob records (keyed by restoreJobId)
 // Shape: { restoreJobId, status, conflictModeEffective, conflictModeDowngradeReason,
 //          destination, validationWarnings, stageResults, currentStage,
@@ -174,4 +188,6 @@ module.exports = {
   restoreJobs,
   exportArchives,
   restoredObjects,
+  // Sprint 5
+  sdiScanResults,
 };

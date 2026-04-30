@@ -100,6 +100,32 @@ export type {
   AdfDocument,
 } from './restore';
 
+// SDI Teaser types
+export {
+  SDI_SUPPORTED_EXTENSIONS,
+  SDI_MAX_FILE_SIZE_BYTES,
+  SDI_SCAN_TIMEOUT_MS,
+  SDI_SCAN_PARALLELISM,
+  SDI_MIN_CREDENTIAL_ENTROPY,
+  SDI_MIN_PHONE_DIGITS,
+} from './sdi';
+export type {
+  SdiFileType,
+  SdiDataElementType,
+  SdiRegulationId,
+  SdiRegulationDisplayStatus,
+  SdiScanStatus,
+  SdiScanHit,
+  SdiFindingSummary,
+  SdiRegulationEntry,
+  SdiScanResult,
+  SdiScanTriggerResponse,
+  SdiScanResultResponse,
+  SdiScanListItem,
+  SdiScanListResponse,
+  SdiErrorCode,
+} from './sdi';
+
 // Platform preferences
 export {
   SHOW_UNCHANGED_OBJECTS_KEY,
