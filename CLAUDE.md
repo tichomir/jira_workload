@@ -27,6 +27,30 @@
 - cloudId resolution always calls `/oauth/token/accessible-resources`; the response is cached per OAuthConnection.
 - Refresh token inactivity threshold is 90 days (Atlassian default); proactive alert fires at 80 days (10-day advance warning).
 
+### Sprint 4 — Restore Engine (2026-04-30)
+**Goal:** Implement the full point-in-time restore pipeline.
+
+**Architect:** software_architect
+
+**Deliverables produced:**
+- `docs/architecture/restore-engine-architecture.md` — Full restore engine architecture:
+  - Dependency-ordered execution graph (5 stages with inter-stage rules)
+  - Conflict mode state machine (Skip/Override/Ask with >50-item basket suppression)
+  - Restore destination router (original, alternate/cross-site, JSON+ZIP export)
+  - Cross-site custom field ID mapping step interface
+  - Pre-execution validation pipeline (7 checks, blocking/non-blocking classified)
+  - Permanent API constraint handlers (key label stamping, reporter header, comment author ADF header, full workflow definition)
+  - Typed API contracts for all restore endpoints
+  - 5 ADRs covering key decisions
+- `packages/shared-types/src/restore.ts` — Typed interfaces exported for backend and frontend consumption
+
+**Key decisions:**
+- `merge` conflict mode permanently excluded (ADR-001): deep merge across Jira object schemas risks silent data corruption.
+- `ask` mode downgraded to `skip` when basket >50 items server-side (ADR-002): UX latency and error risk.
+- Full workflow JSON always supplied to create/update API; no property-level patching (ADR-003).
+- Comment author and reporter attribution via ADF header prepend, not API fields (ADR-004): Jira Cloud API does not allow setting `author` to arbitrary users.
+- Cross-site custom field mapping is a blocking gate for required fields (ADR-005): silent field ID mismatch would corrupt restored issues.
+
 ## Conventions
 - All architecture docs live in `docs/architecture/`.
 - Sequence diagrams use Mermaid `sequenceDiagram` blocks.
@@ -96,5 +120,27 @@ Deliverables:
 - ✅ Implement search API endpoints and Object Explorer diff computation backend — Backend Developer (◉ Deep, 8 SP)
 - ✅ Implement browse, search UI and Object Explorer frontend — Frontend Developer (◉ Deep, 8 SP)
 - ✅ QA: end-to-end test suite for browse, search, and Object Explorer — Qa Engineer (◉ Deep, 5 SP)
+
+---
+### Sprint 4 | 2026-04-30 | ✅ done | 25 SP
+**Goal:** [Phase: Restore Engine]
+Implement the full point-in-time restore pipeline: dependency-ordered restore sequence, three conflict modes (Skip, Override, Ask), three restore destinations (original location, alternate/cross-site location, JSON+ZIP export), pre-execution validation checks, cross-site custom field ID mapping, and all permanent API constraint handling (issue key labelling, reporter attribution header, comment author ADF header, full workflow definition supply).
+
+Deliverables:
+- Dependency-ordered restore sequence: (1) Workflows + CustomFieldDefinitions, (2) Projects, (3) Parent Issues, (4) Comments + Attachments + Boards, (5) Sprints
+- Conflict modes: Skip (default), Override, Ask per conflict; Ask hidden for baskets >50 items; Merge permanently excluded
+- Restore destinations: original location (matched by project key/object name), alternate location (same-site or cross-site), JSON export + attachment binary ZIP download
+- Cross-site custom field ID mapping step enforced for cross-site restores
+- Pre-execution validation: OAuth token validity, target project existence and archive status, Jira Software active check, workflow status name check (non-blocking), custom field presence check (blocking for required, non-blocking for optional), attachment size ≤250 MB check
+- Issue key labelling: original key stamped as label original-key:PROJ-123 on restore
+- Reporter attribution preserved as header line in restored comment body
+- Comment author original attribution prepended as inline ADF header in restored comment
+- Full workflow definition supplied in full to workflow create/update API (no property-level restore)
+
+**Delivered:**
+- ✅ Design restore engine architecture and API contract — Software Architect (◉ Deep, 5 SP)
+- ✅ Define restore pipeline constants, schemas, and conflict-mode configuration — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Implement restore engine backend: pipeline, validation, conflict modes, destinations, and API constraint handlers — Backend Developer (◉ Deep, 13 SP)
+- ✅ QA: end-to-end and unit test suite for restore engine pipeline — Qa Engineer (◉ Deep, 5 SP)
 
 ---

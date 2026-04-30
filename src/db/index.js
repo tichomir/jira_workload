@@ -110,6 +110,24 @@ const userPreferences = new Map();
 // Shape: { backupPointId, nodeType, id, fields }
 const objectSnapshots = new Map();
 
+// ---------------------------------------------------------------------------
+// Sprint 4 — Restore Engine
+// ---------------------------------------------------------------------------
+
+// RestoreJob records (keyed by restoreJobId)
+// Shape: { restoreJobId, status, conflictModeEffective, conflictModeDowngradeReason,
+//          destination, validationWarnings, stageResults, currentStage,
+//          pendingConflicts: [{ itemId, objectType }], exportArchiveKey, createdAt }
+const restoreJobs = new Map();
+
+// ExportArchive records (keyed by restoreJobId)
+// Shape: { restoreJobId, manifest: [...], objects: { [filename]: {...} }, attachments: [...] }
+const exportArchives = new Map();
+
+// Restored objects at destination (keyed by `${restoreJobId}:${objectType}:${id}`)
+// Shape: { restoreJobId, objectType, id, targetId, fields, appliedConstraints }
+const restoredObjects = new Map();
+
 /**
  * Clean up expired state records (called lazily).
  */
@@ -152,4 +170,8 @@ module.exports = {
   searchProjects,
   userPreferences,
   objectSnapshots,
+  // Sprint 4
+  restoreJobs,
+  exportArchives,
+  restoredObjects,
 };

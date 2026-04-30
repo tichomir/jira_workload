@@ -9,6 +9,7 @@ const backupRouter = require('./routes/backup');
 const searchRouter = require('./routes/search');
 const backupPointsRouter = require('./routes/backupPoints');
 const preferencesRouter = require('./routes/preferences');
+const restoreRouter = require('./routes/restore');
 const { assertPurgeCascadeAllowed } = require('./services/purgeCascade');
 
 const app = express();
@@ -28,6 +29,9 @@ app.use('/api/v1/integrations', backupRouter);
 
 // Sprint 3 — Search and Object Explorer routes
 app.use('/api/v1/search', searchRouter);
+
+// Sprint 4 — Restore Engine routes
+app.use('/api/v1/restore', restoreRouter);
 app.use('/api/v1/backup-points', backupPointsRouter);
 app.use('/api/v1/preferences', preferencesRouter);
 

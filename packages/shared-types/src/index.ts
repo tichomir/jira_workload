@@ -58,6 +58,48 @@ export type {
   SprintSearchResponse,
 } from './search/sprints';
 
+// Restore Engine constants
+export {
+  RESTORE_STAGE_ORDER,
+  CONFLICT_MODE,
+  ASK_BASKET_THRESHOLD,
+  RESTORE_DESTINATION,
+  VALIDATION_CHECK_TYPE,
+  VALIDATION_CHECK_BLOCKING,
+  ATTACHMENT_SIZE_LIMIT_BYTES,
+  ISSUE_KEY_LABEL_PREFIX,
+  REPORTER_ATTRIBUTION_HEADER,
+  COMMENT_AUTHOR_ADF_NODE,
+} from './restoreConstants';
+
+// Restore Engine types
+export type {
+  JiraObjectType,
+  ConflictMode,
+  ConflictModeDowngradeReason,
+  RestoreDestinationType,
+  RestoreDestination,
+  ObjectSelection,
+  RestoreRequest,
+  StageNumber,
+  ItemStatus,
+  RestoreItemResult,
+  StageResult,
+  ValidationCheckResult,
+  ValidationPipelineResult,
+  CustomFieldMappingInput,
+  CustomFieldMappingOutput,
+  BasketSummary,
+  RestoreJobStatus,
+  RestoreResponse,
+  RestoreJobStatusResponse,
+  ConflictDecisionRequest,
+  ConflictDecisionResponse,
+  ValidationOnlyResponse,
+  AdfNode,
+  AdfDocument,
+} from './restore';
+
 // Platform preferences
 export {
   SHOW_UNCHANGED_OBJECTS_KEY,
