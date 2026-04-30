@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browse &amp; Search — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ── Browse-specific styles ── */
+    .tab-list {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 20px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      white-space: nowrap;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Global search */
+    .global-search-wrap { position: relative; }
+    .global-search-input-row { display: flex; gap: 8px; align-items: center; }
+    .global-search-input-row .form-input { flex: 1; }
+    #global-results {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: 200;
+      max-height: 420px;
+      overflow-y: auto;
+      display: none;
+    }
+    #global-results.open { display: block; }
+    .result-group-label {
+      padding: 8px 14px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+    .result-group-label:first-child { border-top: none; }
+    .result-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      cursor: pointer;
+      outline: none;
+      transition: background .1s;
+    }
+    .result-item:hover,
+    .result-item:focus,
+    .result-item[aria-selected="true"] { background: var(--primary-light); }
+    .result-item-key { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--text-muted); }
+    .result-item-name { flex: 1; font-size: 14px; }
+    .result-item-site { font-size: 12px; color: var(--text-muted); }
+    .result-item-match { font-size: 11px; color: var(--text-muted); }
+    .global-empty { padding: 18px 14px; color: var(--text-muted); font-size: 14px; text-align: center; }
+
+    /* Filter form layout */
+    .filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+    @media (max-width: 640px) { .filter-grid { grid-template-columns: 1fr; } }
+    .filter-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 16px; }
+    @media (max-width: 800px) { .filter-grid-3 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 540px) { .filter-grid-3 { grid-template-columns: 1fr; } }
+
+    /* Collapsible filter panel */
+    .filter-toggle-btn {
+      background: none; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--text);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .filter-toggle-btn:hover { background: var(--bg); }
+    .filter-chevron { transition: transform .2s; display: inline-block; }
+    .filter-panel { overflow: hidden; }
+    .filter-panel.collapsed { display: none; }
+
+    /* Skeleton loader */
+    .skeleton-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+    .skeleton-row {
+      height: 48px;
+      background: linear-gradient(90deg, var(--bg) 25%, #e8eaed 50%, var(--bg) 75%);
+      background-size: 200% 100%;
+      border-radius: var(--radius);
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-row.short { height: 32px; }
+
+    /* Result table */
+    .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .result-table th {
+      text-align: left; padding: 8px 10px;
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .result-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .result-table tr:last-child td { border-bottom: none; }
+    .result-table tr:hover td { background: var(--primary-light); }
+
+    /* Change indicator badges */
+    .badge-added    { background: var(--success-bg); color: var(--success); }
+    .badge-modified { background: var(--amber-bg); color: var(--amber); }
+    .badge-deleted  { background: var(--danger-bg); color: var(--danger); }
+    .badge-unchanged { background: var(--bg); color: var(--text-muted); }
+
+    /* Explorer result row */
+    .explorer-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .explorer-item-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: var(--white);
+    }
+    .explorer-item-id { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--text-muted); flex: 1; }
+    .explorer-item-fields { padding: 8px 14px; background: var(--bg); font-size: 12px; }
+    .changed-field { color: var(--amber); font-weight: 600; }
+
+    /* Empty and error states */
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--text-muted); }
+    .empty-state-icon { font-size: 32px; margin-bottom: 10px; }
+    .empty-state p { font-size: 14px; }
+    .inline-error {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 12px; background: var(--danger-bg);
+      border-radius: var(--radius); color: var(--danger);
+      font-size: 13px; margin-top: 12px;
+    }
+
+    /* Toggle row for show-unchanged */
+    .pref-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-top: 1px solid var(--border); margin-top: 12px;
+    }
+
+    /* Results count */
+    .results-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+
+    /* Action row at the top of each panel */
+    .panel-action-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .panel-action-row .form-group { margin-bottom: 0; flex: 1; min-width: 120px; }
+
+    /* Date range row */
+    .date-range-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 480px) { .date-range-row { grid-template-columns: 1fr; } }
+
+    /* Multi-select simulation using checkboxes */
+    .multi-select-wrap {
+      border: 2px solid var(--border); border-radius: var(--radius); padding: 6px 8px;
+      min-height: 38px; background: var(--white); font-size: 13px;
+      cursor: pointer; position: relative;
+    }
+    .multi-select-wrap:focus-within { border-color: var(--primary); }
+    .multi-select-display { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 24px; }
+    .ms-tag {
+      background: var(--primary-light); color: var(--primary-dark);
+      border-radius: 3px; padding: 1px 6px; font-size: 12px; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 3px;
+    }
+    .ms-tag-remove { background: none; border: none; cursor: pointer; color: var(--primary); font-size: 12px; padding: 0; line-height: 1; }
+    .ms-placeholder { color: var(--text-muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="container" style="max-width: 1100px;">
+
+  <div class="page-header">
+    <h1>Browse &amp; Search</h1>
+    <p>Search across all protected Jira objects and explore backup point changes.</p>
+  </div>
+
+  <!-- ── Global Search Bar ── -->
+  <div class="card mb-16" id="global-search-card">
+    <div class="card-title">Global Search</div>
+    <div class="card-subtitle">Search across Projects, Workflows, and Custom Fields on all connected sites.</div>
+    <div class="global-search-wrap">
+      <div class="global-search-input-row">
+        <input
+          type="search"
+          id="global-q"
+          class="form-input"
+          placeholder="Search by name or key…"
+          aria-label="Global search query"
+          aria-autocomplete="list"
+          aria-controls="global-results"
+          aria-expanded="false"
+          autocomplete="off"
+          role="combobox"
+        />
+        <select id="global-site-filter" class="form-select" style="max-width:180px" aria-label="Filter by site">
+          <option value="">All Sites</option>
+        </select>
+        <select id="global-type-filter" class="form-select" style="max-width:180px" aria-label="Filter by object type">
+          <option value="">All Types</option>
+          <option value="JiraProjectNode">Projects</option>
+          <option value="JiraWorkflowNode">Workflows</option>
+          <option value="JiraCustomFieldNode">Custom Fields</option>
+        </select>
+      </div>
+      <div
+        id="global-results"
+        role="listbox"
+        aria-label="Global search results"
+      ></div>
+    </div>
+  </div>
+
+  <!-- ── Tab Navigation ── -->
+  <div role="tablist" class="tab-list" aria-label="Search panels">
+    <button role="tab" class="tab-btn" id="tab-projects"    aria-selected="true"  aria-controls="panel-projects">Projects</button>
+    <button role="tab" class="tab-btn" id="tab-issues"      aria-selected="false" aria-controls="panel-issues">Issues</button>
+    <button role="tab" class="tab-btn" id="tab-attachments" aria-selected="false" aria-controls="panel-attachments">Attachments</button>
+    <button role="tab" class="tab-btn" id="tab-boards"      aria-selected="false" aria-controls="panel-boards">Boards &amp; Sprints</button>
+    <button role="tab" class="tab-btn" id="tab-explorer"    aria-selected="false" aria-controls="panel-explorer">Object Explorer</button>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL: Project Inventory Search
+       ════════════════════════════════════════════════════ -->
+  <div role="tabpanel" id="panel-projects" aria-labelledby="tab-projects" class="tab-panel active">
+    <div class="card">
+      <div class="card-title">Project Inventory Search</div>
+      <div class="card-subtitle">Search projects across all backup points by name, key, type, and archive status.</div>
+
+      <div class="filter-grid mb-16">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="proj-q">Name (keyword)</label>
+          <input type="text" id="proj-q" class="form-input" placeholder="e.g. platform, cloud…" aria-label="Project name keyword search" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="proj-key">Key (prefix/exact)</label>
+          <input type="text" id="proj-key" class="form-input" placeholder="e.g. PROJ, WORK" aria-label="Project key prefix or exact match" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="proj-type">Project Type</label>
+          <select id="proj-type" class="form-select" aria-label="Filter by project type">
+            <option value="">All types</option>
+            <option value="software">Software</option>
+            <option value="business">Business</option>
+            <option value="service_desk">Service Desk</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="proj-archived">Archive Status</label>
+          <select id="proj-archived" class="form-select" aria-label="Filter by archive status">
+            <option value="">All (archived &amp; active)</option>
+            <option value="false">Active only</option>
+            <option value="true">Archived only</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex gap-8 mb-16">
+        <button class="btn btn-primary" id="btn-proj-search" onclick="searchProjects()" aria-label="Search projects">Search</button>
+        <button class="btn btn-secondary" onclick="resetProjects()" aria-label="Reset project search filters">Reset</button>
+      </div>
+
+      <!-- States -->
+      <div id="proj-skeleton" class="skeleton-list hidden" aria-live="polite" aria-label="Loading projects">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+      <div id="proj-empty" class="empty-state hidden" role="status">
+        <div class="empty-state-icon">📂</div>
+        <p>No projects found matching your criteria.</p>
+      </div>
+      <div id="proj-error" class="inline-error hidden" role="alert">
+        <span>⚠</span>
+        <span id="proj-error-msg"></span>
+      </div>
+
+      <div id="proj-results-meta" class="results-meta hidden"></div>
+      <div id="proj-results" class="hidden" role="region" aria-label="Project search results">
+        <table class="result-table" aria-label="Projects">
+          <thead>
+            <tr>
+              <th scope="col">Key</th>
+              <th scope="col">Name</th>
+              <th scope="col">Type</th>
+              <th scope="col">Status</th>
+              <th scope="col">Issues</th>
+              <th scope="col">Last Updated</th>
+            </tr>
+          </thead>
+          <tbody id="proj-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL: Issue Search
+       ════════════════════════════════════════════════════ -->
+  <div role="tabpanel" id="panel-issues" aria-labelledby="tab-issues" class="tab-panel hidden">
+    <div class="card">
+      <div class="card-title">Issue Search</div>
+      <div class="card-subtitle">Search issues within a specific backup point using keyword and structured filters.</div>
+
+      <div class="form-group">
+        <label class="form-label" for="issue-backup-id">Backup Point ID <span class="req">*</span></label>
+        <input type="text" id="issue-backup-id" class="form-input" placeholder="e.g. bp-001" aria-label="Backup point ID (required)" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="issue-q">Keyword (summary or key)</label>
+        <input type="text" id="issue-q" class="form-input" placeholder="Search summary or issue key…" aria-label="Issue keyword search on summary and key" />
+      </div>
+
+      <!-- Collapsible filter panel -->
+      <div class="mb-16">
+        <button
+          class="filter-toggle-btn"
+          id="btn-issue-filter-toggle"
+          onclick="toggleIssueFilters()"
+          aria-expanded="false"
+          aria-controls="issue-filter-panel"
+          aria-label="Toggle issue filter panel"
+        >
+          <span class="filter-chevron" id="issue-filter-chevron">▶</span>
+          Filters
+        </button>
+      </div>
+
+      <div id="issue-filter-panel" class="filter-panel collapsed" role="group" aria-label="Issue filter fields">
+        <div class="filter-grid mb-16">
+          <!-- 1. issuetype -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-issuetype">Issue Type</label>
+            <input type="text" id="issue-issuetype" class="form-input" placeholder="Bug, Story, Task… (comma-separated)" aria-label="Filter by issue type (comma-separated)" />
+          </div>
+          <!-- 2. status -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-status">Status</label>
+            <input type="text" id="issue-status" class="form-input" placeholder="Open, In Progress… (comma-separated)" aria-label="Filter by issue status (comma-separated)" />
+          </div>
+          <!-- 3. statusCategory -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-status-cat">Status Category</label>
+            <select id="issue-status-cat" class="form-select" aria-label="Filter by status category">
+              <option value="">Any</option>
+              <option value="To Do">To Do</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+          <!-- 4. priority -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-priority">Priority</label>
+            <input type="text" id="issue-priority" class="form-input" placeholder="High, Medium, Low… (comma-separated)" aria-label="Filter by priority (comma-separated)" />
+          </div>
+          <!-- 5. assignee -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-assignee">Assignee (accountId)</label>
+            <input type="text" id="issue-assignee" class="form-input" placeholder="accountId or 'unassigned'…" aria-label="Filter by assignee account ID, use 'unassigned' for unassigned issues" />
+          </div>
+          <!-- 6. reporter -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-reporter">Reporter (accountId)</label>
+            <input type="text" id="issue-reporter" class="form-input" placeholder="accountId… (comma-separated)" aria-label="Filter by reporter account ID (comma-separated)" />
+          </div>
+          <!-- 7. labels -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-labels">Labels <span class="form-hint" style="display:inline">(AND)</span></label>
+            <input type="text" id="issue-labels" class="form-input" placeholder="label1, label2… (all must match)" aria-label="Filter by labels — issue must carry ALL specified labels" />
+          </div>
+          <!-- 11. projectKey -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="issue-project-key">Project Key</label>
+            <input type="text" id="issue-project-key" class="form-input" placeholder="PROJ, WORK… (comma-separated)" aria-label="Filter by project key (comma-separated)" />
+          </div>
+        </div>
+
+        <!-- Date range filters (8, 9, 10) -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px 16px;margin-bottom:16px;" class="issue-date-grid">
+          <!-- 8. created -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Created From</label>
+            <input type="date" id="issue-created-from" class="form-input" aria-label="Issue created from date" />
+            <label class="form-label mt-8">Created To</label>
+            <input type="date" id="issue-created-to" class="form-input" aria-label="Issue created to date" />
+          </div>
+          <!-- 9. updated -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Updated From</label>
+            <input type="date" id="issue-updated-from" class="form-input" aria-label="Issue updated from date" />
+            <label class="form-label mt-8">Updated To</label>
+            <input type="date" id="issue-updated-to" class="form-input" aria-label="Issue updated to date" />
+          </div>
+          <!-- 10. resolved -->
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Resolved From</label>
+            <input type="date" id="issue-resolved-from" class="form-input" aria-label="Issue resolved from date" />
+            <label class="form-label mt-8">Resolved To</label>
+            <input type="date" id="issue-resolved-to" class="form-input" aria-label="Issue resolved to date" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-8 mb-16">
+        <button class="btn btn-primary" id="btn-issue-search" onclick="searchIssues()" aria-label="Search issues">Search</button>
+        <button class="btn btn-secondary" onclick="resetIssues()" aria-label="Reset issue search filters">Reset</button>
+      </div>
+
+      <!-- States -->
+      <div id="issue-skeleton" class="skeleton-list hidden" aria-live="polite" aria-label="Loading issues">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+      <div id="issue-empty" class="empty-state hidden" role="status">
+        <div class="empty-state-icon">🎫</div>
+        <p>No issues found matching your criteria.</p>
+      </div>
+      <div id="issue-error" class="inline-error hidden" role="alert">
+        <span>⚠</span>
+        <span id="issue-error-msg"></span>
+      </div>
+
+      <div id="issue-results-meta" class="results-meta hidden"></div>
+      <div id="issue-results" class="hidden" role="region" aria-label="Issue search results">
+        <table class="result-table" aria-label="Issues">
+          <thead>
+            <tr>
+              <th scope="col">Key</th>
+              <th scope="col">Summary</th>
+              <th scope="col">Type</th>
+              <th scope="col">Status</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Assignee</th>
+              <th scope="col">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="issue-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL: Attachment Search
+       ════════════════════════════════════════════════════ -->
+  <div role="tabpanel" id="panel-attachments" aria-labelledby="tab-attachments" class="tab-panel hidden">
+    <div class="card">
+      <div class="card-title">Attachment Search</div>
+      <div class="card-subtitle">Search attachments by filename, MIME type, and creation date range.</div>
+
+      <div class="filter-grid mb-16">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="att-q">Filename</label>
+          <input type="text" id="att-q" class="form-input" placeholder="e.g. screenshot, report.pdf…" aria-label="Attachment filename search" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="att-mime">MIME Type</label>
+          <select id="att-mime" class="form-select" aria-label="Filter by MIME type">
+            <option value="">Any type</option>
+            <option value="image/png">image/png</option>
+            <option value="image/jpeg">image/jpeg</option>
+            <option value="image/gif">image/gif</option>
+            <option value="application/pdf">application/pdf</option>
+            <option value="text/plain">text/plain</option>
+            <option value="application/zip">application/zip</option>
+            <option value="application/octet-stream">application/octet-stream</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="att-created-from">Created From (ISO 8601)</label>
+          <input type="date" id="att-created-from" class="form-input" aria-label="Attachment created from date (ISO 8601)" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="att-created-to">Created To (ISO 8601)</label>
+          <input type="date" id="att-created-to" class="form-input" aria-label="Attachment created to date (ISO 8601)" />
+        </div>
+      </div>
+
+      <div class="flex gap-8 mb-16">
+        <button class="btn btn-primary" id="btn-att-search" onclick="searchAttachments()" aria-label="Search attachments">Search</button>
+        <button class="btn btn-secondary" onclick="resetAttachments()" aria-label="Reset attachment search filters">Reset</button>
+      </div>
+
+      <!-- States -->
+      <div id="att-skeleton" class="skeleton-list hidden" aria-live="polite" aria-label="Loading attachments">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+      <div id="att-empty" class="empty-state hidden" role="status">
+        <div class="empty-state-icon">📎</div>
+        <p>No attachments found matching your criteria.</p>
+      </div>
+      <div id="att-error" class="inline-error hidden" role="alert">
+        <span>⚠</span>
+        <span id="att-error-msg"></span>
+      </div>
+
+      <div id="att-results-meta" class="results-meta hidden"></div>
+      <div id="att-results" class="hidden" role="region" aria-label="Attachment search results">
+        <table class="result-table" aria-label="Attachments">
+          <thead>
+            <tr>
+              <th scope="col">Filename</th>
+              <th scope="col">MIME Type</th>
+              <th scope="col">Size</th>
+              <th scope="col">Issue</th>
+              <th scope="col">Created</th>
+            </tr>
+          </thead>
+          <tbody id="att-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL: Board & Sprint Search
+       ════════════════════════════════════════════════════ -->
+  <div role="tabpanel" id="panel-boards" aria-labelledby="tab-boards" class="tab-panel hidden">
+    <div class="card">
+      <div class="card-title">Board &amp; Sprint Search</div>
+      <div class="card-subtitle">Search Jira boards and sprints by name, sprint state, and date range.</div>
+
+      <div id="board-scope-banner" class="banner banner-amber hidden mb-16" role="alert">
+        <span class="banner-icon">⚠</span>
+        <div class="banner-body">
+          <div class="banner-title">Board scope unavailable</div>
+          <div class="banner-msg">The <code>read:board-scope:jira-software</code> scope is not granted for this integration. Board and Sprint search is unavailable.</div>
+        </div>
+      </div>
+
+      <div class="filter-grid mb-16">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="board-q">Name</label>
+          <input type="text" id="board-q" class="form-input" placeholder="Search by board or sprint name…" aria-label="Board or sprint name search" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="board-sprint-state">Sprint State</label>
+          <select id="board-sprint-state" class="form-select" aria-label="Filter by sprint state">
+            <option value="">Any state</option>
+            <option value="active">Active</option>
+            <option value="closed">Closed</option>
+            <option value="future">Future</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="board-date-from">Date From</label>
+          <input type="date" id="board-date-from" class="form-input" aria-label="Sprint date range from" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="board-date-to">Date To</label>
+          <input type="date" id="board-date-to" class="form-input" aria-label="Sprint date range to" />
+        </div>
+      </div>
+
+      <div class="flex gap-8 mb-16">
+        <button class="btn btn-primary" id="btn-board-search" onclick="searchBoards()" aria-label="Search boards and sprints">Search</button>
+        <button class="btn btn-secondary" onclick="resetBoards()" aria-label="Reset board and sprint search filters">Reset</button>
+      </div>
+
+      <!-- States -->
+      <div id="board-skeleton" class="skeleton-list hidden" aria-live="polite" aria-label="Loading boards and sprints">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+      <div id="board-empty" class="empty-state hidden" role="status">
+        <div class="empty-state-icon">🏃</div>
+        <p>No boards or sprints found matching your criteria.</p>
+      </div>
+      <div id="board-error" class="inline-error hidden" role="alert">
+        <span>⚠</span>
+        <span id="board-error-msg"></span>
+      </div>
+
+      <div id="board-results-meta" class="results-meta hidden"></div>
+      <div id="board-results" class="hidden" role="region" aria-label="Board and sprint search results">
+        <table class="result-table" aria-label="Boards and sprints">
+          <thead>
+            <tr>
+              <th scope="col">Type</th>
+              <th scope="col">Name</th>
+              <th scope="col">State / Board Type</th>
+              <th scope="col">Project</th>
+              <th scope="col">Start Date</th>
+              <th scope="col">End Date</th>
+            </tr>
+          </thead>
+          <tbody id="board-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANEL: Object Explorer
+       ════════════════════════════════════════════════════ -->
+  <div role="tabpanel" id="panel-explorer" aria-labelledby="tab-explorer" class="tab-panel hidden">
+    <div class="card">
+      <div class="card-title">Object Explorer</div>
+      <div class="card-subtitle">Explore objects in a backup point and view change indicators (Added, Modified, Deleted, Unchanged).</div>
+
+      <div class="filter-grid mb-16">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="oe-backup-id">Backup Point ID <span class="req">*</span></label>
+          <input type="text" id="oe-backup-id" class="form-input" placeholder="e.g. bp-001" aria-label="Backup point ID (required)" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="oe-node-type">Node Type <span class="req">*</span></label>
+          <select id="oe-node-type" class="form-select" aria-label="Select node type to explore (required)">
+            <option value="">Select node type…</option>
+            <option value="JiraProjectNode">JiraProjectNode</option>
+            <option value="JiraIssueNode">JiraIssueNode</option>
+            <option value="JiraAttachmentNode">JiraAttachmentNode</option>
+            <option value="JiraWorkflowNode">JiraWorkflowNode</option>
+            <option value="JiraCustomFieldDefinitionNode">JiraCustomFieldDefinitionNode</option>
+            <option value="JiraCustomFieldContextNode">JiraCustomFieldContextNode</option>
+            <option value="JiraBoardNode">JiraBoardNode</option>
+            <option value="JiraSprintNode">JiraSprintNode</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="oe-parent-id">Parent ID (optional)</label>
+          <input type="text" id="oe-parent-id" class="form-input" placeholder="e.g. project-id, board-id…" aria-label="Optional parent ID to scope results" />
+        </div>
+      </div>
+
+      <div class="flex gap-8 mb-8">
+        <button class="btn btn-primary" id="btn-oe-search" onclick="searchObjects()" aria-label="Fetch object explorer results">Explore</button>
+        <button class="btn btn-secondary" onclick="resetExplorer()" aria-label="Reset object explorer">Reset</button>
+      </div>
+
+      <!-- Show/Hide unchanged toggle -->
+      <div class="pref-toggle-row">
+        <div class="toggle-text">
+          <div class="label">Show unchanged objects</div>
+          <div class="hint">When enabled, unchanged objects are included in results. Preference is saved per-integration.</div>
+        </div>
+        <label class="toggle" aria-label="Toggle show unchanged objects preference">
+          <input
+            type="checkbox"
+            id="oe-show-unchanged"
+            onchange="onShowUnchangedToggle(this)"
+            aria-label="Show unchanged objects — defaults to hidden"
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- States -->
+      <div id="oe-skeleton" class="skeleton-list hidden" aria-live="polite" aria-label="Loading object explorer results">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row short"></div>
+      </div>
+      <div id="oe-empty" class="empty-state hidden" role="status">
+        <div class="empty-state-icon">🔍</div>
+        <p>No objects found. Enter a backup point ID and node type, then click Explore.</p>
+      </div>
+      <div id="oe-error" class="inline-error hidden" role="alert">
+        <span>⚠</span>
+        <span id="oe-error-msg"></span>
+      </div>
+
+      <div id="oe-results-meta" class="results-meta hidden"></div>
+      <div id="oe-results" class="hidden" role="region" aria-label="Object explorer results"></div>
+    </div>
+  </div>
+
+</div><!-- /.container -->
+
+<script>
+'use strict';
+
+const API = '/api/v1';
+
+/* ─── Utilities ─────────────────────────────────────────────────── */
+function qs(id) { return document.getElementById(id); }
+function show(id) { const el = qs(id); if (el) el.classList.remove('hidden'); }
+function hide(id) { const el = qs(id); if (el) el.classList.add('hidden'); }
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }); } catch { return iso; }
+}
+function fmtBytes(n) {
+  if (!n) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/* ─── Tab navigation ─────────────────────────────────────────────── */
+const TABS = ['projects','issues','attachments','boards','explorer'];
+
+function activateTab(name) {
+  TABS.forEach(t => {
+    const btn = qs(`tab-${t}`);
+    const pnl = qs(`panel-${t}`);
+    if (t === name) {
+      btn.setAttribute('aria-selected','true');
+      pnl.classList.remove('hidden');
+      pnl.classList.add('active');
+    } else {
+      btn.setAttribute('aria-selected','false');
+      pnl.classList.add('hidden');
+      pnl.classList.remove('active');
+    }
+  });
+}
+
+// Wire tab buttons
+TABS.forEach(t => {
+  qs(`tab-${t}`).addEventListener('click', () => activateTab(t));
+  // Keyboard: arrow keys within tablist
+  qs(`tab-${t}`).addEventListener('keydown', (e) => {
+    const idx = TABS.indexOf(t);
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      qs(`tab-${TABS[(idx + 1) % TABS.length]}`).focus();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      qs(`tab-${TABS[(idx - 1 + TABS.length) % TABS.length]}`).focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      activateTab(t);
+    }
+  });
+});
+
+/* ─── Panel state helpers ────────────────────────────────────────── */
+function panelLoading(prefix) {
+  hide(`${prefix}-skeleton`); // reset
+  hide(`${prefix}-empty`);
+  hide(`${prefix}-error`);
+  hide(`${prefix}-results`);
+  hide(`${prefix}-results-meta`);
+  show(`${prefix}-skeleton`);
+}
+function panelEmpty(prefix) {
+  hide(`${prefix}-skeleton`);
+  hide(`${prefix}-results`);
+  hide(`${prefix}-results-meta`);
+  hide(`${prefix}-error`);
+  show(`${prefix}-empty`);
+}
+function panelError(prefix, msg) {
+  hide(`${prefix}-skeleton`);
+  hide(`${prefix}-results`);
+  hide(`${prefix}-results-meta`);
+  hide(`${prefix}-empty`);
+  qs(`${prefix}-error-msg`).textContent = msg;
+  show(`${prefix}-error`);
+}
+function panelResults(prefix, total) {
+  hide(`${prefix}-skeleton`);
+  hide(`${prefix}-empty`);
+  hide(`${prefix}-error`);
+  const meta = qs(`${prefix}-results-meta`);
+  if (meta) {
+    meta.textContent = `${total} result${total !== 1 ? 's' : ''} found`;
+    show(`${prefix}-results-meta`);
+  }
+  show(`${prefix}-results`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLOBAL SEARCH
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _globalDebounceTimer = null;
+let _globalResults = [];
+let _globalHighlightIdx = -1;
+
+const globalInput = qs('global-q');
+const globalDropdown = qs('global-results');
+
+globalInput.addEventListener('input', () => {
+  clearTimeout(_globalDebounceTimer);
+  const q = globalInput.value.trim();
+  if (!q) { closeGlobalDropdown(); return; }
+  _globalDebounceTimer = setTimeout(() => fetchGlobalSearch(q), 300);
+});
+
+globalInput.addEventListener('keydown', (e) => {
+  if (!globalDropdown.classList.contains('open')) return;
+  const items = globalDropdown.querySelectorAll('.result-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _globalHighlightIdx = Math.min(_globalHighlightIdx + 1, items.length - 1);
+    updateGlobalHighlight(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _globalHighlightIdx = Math.max(_globalHighlightIdx - 1, 0);
+    updateGlobalHighlight(items);
+  } else if (e.key === 'Escape') {
+    closeGlobalDropdown();
+  } else if (e.key === 'Enter') {
+    if (_globalHighlightIdx >= 0 && items[_globalHighlightIdx]) {
+      items[_globalHighlightIdx].click();
+    }
+  }
+});
+
+globalInput.addEventListener('blur', (e) => {
+  // Delay to allow click events on result items
+  setTimeout(() => {
+    if (!globalDropdown.contains(document.activeElement)) closeGlobalDropdown();
+  }, 150);
+});
+
+qs('global-site-filter').addEventListener('change', () => {
+  const q = globalInput.value.trim();
+  if (q) fetchGlobalSearch(q);
+});
+qs('global-type-filter').addEventListener('change', () => {
+  const q = globalInput.value.trim();
+  if (q) fetchGlobalSearch(q);
+});
+
+function updateGlobalHighlight(items) {
+  items.forEach((item, i) => {
+    const selected = i === _globalHighlightIdx;
+    item.setAttribute('aria-selected', String(selected));
+    if (selected) item.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+async function fetchGlobalSearch(q) {
+  const siteId = qs('global-site-filter').value;
+  const nodeType = qs('global-type-filter').value;
+  const params = new URLSearchParams({ q, limit: '50' });
+  if (siteId) params.set('siteId', siteId);
+  if (nodeType) params.set('nodeType', nodeType);
+
+  // Show loading state in dropdown
+  globalDropdown.innerHTML = '<div class="global-empty" role="status">Searching…</div>';
+  openGlobalDropdown();
+
+  try {
+    const res = await fetch(`${API}/search/global?${params}`);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      globalDropdown.innerHTML = `<div class="global-empty" role="alert">Error: ${escHtml(d.message || 'Search failed')}</div>`;
+      return;
+    }
+    const data = await res.json();
+    _globalResults = data.results || [];
+    renderGlobalResults(_globalResults, data.total);
+  } catch (err) {
+    globalDropdown.innerHTML = `<div class="global-empty" role="alert">Network error: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderGlobalResults(results, total) {
+  _globalHighlightIdx = -1;
+  if (!results.length) {
+    globalDropdown.innerHTML = '<div class="global-empty" role="status">No results found.</div>';
+    globalInput.setAttribute('aria-expanded', 'true');
+    return;
+  }
+
+  // Group by nodeType
+  const groups = {
+    JiraProjectNode: { label: 'Projects', items: [] },
+    JiraWorkflowNode: { label: 'Workflows', items: [] },
+    JiraCustomFieldNode: { label: 'Custom Fields', items: [] },
+  };
+  for (const r of results) {
+    if (groups[r.nodeType]) groups[r.nodeType].items.push(r);
+    else groups[r.nodeType] = { label: r.nodeType, items: [r] };
+  }
+
+  let html = '';
+  for (const [type, group] of Object.entries(groups)) {
+    if (!group.items.length) continue;
+    html += `<div class="result-group-label" role="presentation">${escHtml(group.label)}</div>`;
+    for (const item of group.items) {
+      html += `<div
+        class="result-item"
+        role="option"
+        aria-selected="false"
+        tabindex="-1"
+        data-id="${escHtml(item.id)}"
+        data-type="${escHtml(item.nodeType)}"
+        onclick="onGlobalResultClick(this)"
+        onkeydown="onGlobalResultKeydown(event, this)"
+      >
+        ${item.key ? `<span class="result-item-key">${escHtml(item.key)}</span>` : ''}
+        <span class="result-item-name">${escHtml(item.name)}</span>
+        <span class="result-item-site">${escHtml(item.siteName)}</span>
+        <span class="result-item-match">matched on ${escHtml(item.matchedOn)}</span>
+      </div>`;
+    }
+  }
+
+  const totalNote = total > results.length ? ` (showing ${results.length} of ${total})` : '';
+  html += `<div class="global-empty" style="font-size:12px;padding:6px 14px;border-top:1px solid var(--border)">${total} result${total !== 1 ? 's' : ''}${totalNote}</div>`;
+
+  globalDropdown.innerHTML = html;
+  globalInput.setAttribute('aria-expanded', 'true');
+}
+
+function openGlobalDropdown() {
+  globalDropdown.classList.add('open');
+  globalInput.setAttribute('aria-expanded', 'true');
+}
+
+function closeGlobalDropdown() {
+  globalDropdown.classList.remove('open');
+  globalInput.setAttribute('aria-expanded', 'false');
+  _globalHighlightIdx = -1;
+}
+
+function onGlobalResultClick(el) {
+  const name = el.querySelector('.result-item-name')?.textContent || '';
+  globalInput.value = name;
+  closeGlobalDropdown();
+}
+
+function onGlobalResultKeydown(e, el) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    onGlobalResultClick(el);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PROJECT INVENTORY SEARCH
+   ═══════════════════════════════════════════════════════════════════ */
+
+async function searchProjects() {
+  panelLoading('proj');
+  const q = qs('proj-q').value.trim();
+  const key = qs('proj-key').value.trim();
+  const projectTypeKey = qs('proj-type').value;
+  const archived = qs('proj-archived').value;
+
+  const params = new URLSearchParams({ limit: '50' });
+  if (q) params.set('q', q);
+  if (key) params.set('key', key);
+  if (projectTypeKey) params.set('projectTypeKey', projectTypeKey);
+  if (archived !== '') params.set('archived', archived);
+
+  try {
+    const res = await fetch(`${API}/search/projects?${params}`);
+    const data = await res.json();
+    if (!res.ok) { panelError('proj', data.message || 'Search failed'); return; }
+
+    const results = data.results || [];
+    if (!results.length) { panelEmpty('proj'); return; }
+
+    const tbody = qs('proj-tbody');
+    tbody.innerHTML = results.map(p => `
+      <tr>
+        <td><code class="font-mono">${escHtml(p.key)}</code></td>
+        <td>${escHtml(p.name)}</td>
+        <td>${escHtml(p.projectTypeKey || '—')}</td>
+        <td>${p.archived
+          ? '<span class="badge badge-deleted">Archived</span>'
+          : '<span class="badge badge-active">Active</span>'}</td>
+        <td>${escHtml(String(p.issueCount ?? '—'))}</td>
+        <td>${fmtDate(p.lastUpdated)}</td>
+      </tr>`).join('');
+
+    panelResults('proj', data.total ?? results.length);
+  } catch (err) {
+    panelError('proj', `Network error: ${err.message}`);
+  }
+}
+
+function resetProjects() {
+  qs('proj-q').value = '';
+  qs('proj-key').value = '';
+  qs('proj-type').value = '';
+  qs('proj-archived').value = '';
+  hide('proj-skeleton');
+  hide('proj-empty');
+  hide('proj-error');
+  hide('proj-results');
+  hide('proj-results-meta');
+  qs('proj-tbody').innerHTML = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ISSUE SEARCH
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _issueFilterExpanded = false;
+
+function toggleIssueFilters() {
+  _issueFilterExpanded = !_issueFilterExpanded;
+  const panel = qs('issue-filter-panel');
+  const chevron = qs('issue-filter-chevron');
+  const btn = qs('btn-issue-filter-toggle');
+  if (_issueFilterExpanded) {
+    panel.classList.remove('collapsed');
+    chevron.textContent = '▼';
+    btn.setAttribute('aria-expanded', 'true');
+  } else {
+    panel.classList.add('collapsed');
+    chevron.textContent = '▶';
+    btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function buildRangeParam(fromVal, toVal) {
+  // Returns ISO-8601 range string like "gte:2026-01-01,lte:2026-04-30" or null
+  const parts = [];
+  if (fromVal) parts.push(`gte:${fromVal}`);
+  if (toVal) parts.push(`lte:${toVal}`);
+  return parts.length ? parts.join(',') : null;
+}
+
+async function searchIssues() {
+  const backupPointId = qs('issue-backup-id').value.trim();
+  if (!backupPointId) {
+    panelError('issue', 'Backup Point ID is required.');
+    return;
+  }
+
+  panelLoading('issue');
+
+  const q = qs('issue-q').value.trim();
+  const issuetype = qs('issue-issuetype').value.trim();
+  const status = qs('issue-status').value.trim();
+  const statusCategory = qs('issue-status-cat').value;
+  const priority = qs('issue-priority').value.trim();
+  const assignee = qs('issue-assignee').value.trim();
+  const reporter = qs('issue-reporter').value.trim();
+  const labels = qs('issue-labels').value.trim();
+  const projectKey = qs('issue-project-key').value.trim();
+
+  // Date ranges
+  const created = buildRangeParam(qs('issue-created-from').value, qs('issue-created-to').value);
+  const updated = buildRangeParam(qs('issue-updated-from').value, qs('issue-updated-to').value);
+  const resolved = buildRangeParam(qs('issue-resolved-from').value, qs('issue-resolved-to').value);
+
+  const params = new URLSearchParams({ limit: '50' });
+  if (q) params.set('q', q);
+  if (issuetype) params.set('issuetype', issuetype);
+  if (status) params.set('status', status);
+  if (statusCategory) params.set('statusCategory', statusCategory);
+  if (priority) params.set('priority', priority);
+  if (assignee) params.set('assignee', assignee);
+  if (reporter) params.set('reporter', reporter);
+  if (labels) params.set('labels', labels);
+  if (projectKey) params.set('projectKey', projectKey);
+  if (created) params.set('created', created);
+  if (updated) params.set('updated', updated);
+  if (resolved) params.set('resolved', resolved);
+
+  try {
+    const res = await fetch(`${API}/backup-points/${encodeURIComponent(backupPointId)}/issues?${params}`);
+    const data = await res.json();
+    if (!res.ok) { panelError('issue', data.message || 'Search failed'); return; }
+
+    const results = data.results || [];
+    if (!results.length) { panelEmpty('issue'); return; }
+
+    const tbody = qs('issue-tbody');
+    tbody.innerHTML = results.map(issue => `
+      <tr>
+        <td><code class="font-mono">${escHtml(issue.key)}</code></td>
+        <td>${escHtml(issue.summary)}</td>
+        <td>${escHtml(issue.issuetype || '—')}</td>
+        <td>${escHtml(issue.status || '—')}</td>
+        <td>${escHtml(issue.priority || '—')}</td>
+        <td>${issue.assignee ? escHtml(issue.assignee.displayName || issue.assignee.accountId) : '<span class="text-muted">Unassigned</span>'}</td>
+        <td>${fmtDate(issue.updated)}</td>
+      </tr>`).join('');
+
+    panelResults('issue', data.total ?? results.length);
+  } catch (err) {
+    panelError('issue', `Network error: ${err.message}`);
+  }
+}
+
+function resetIssues() {
+  ['issue-backup-id','issue-q','issue-issuetype','issue-status','issue-priority',
+   'issue-assignee','issue-reporter','issue-labels','issue-project-key',
+   'issue-created-from','issue-created-to','issue-updated-from','issue-updated-to',
+   'issue-resolved-from','issue-resolved-to'].forEach(id => {
+    const el = qs(id);
+    if (el) el.value = '';
+  });
+  qs('issue-status-cat').value = '';
+  hide('issue-skeleton');
+  hide('issue-empty');
+  hide('issue-error');
+  hide('issue-results');
+  hide('issue-results-meta');
+  qs('issue-tbody').innerHTML = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ATTACHMENT SEARCH
+   ═══════════════════════════════════════════════════════════════════ */
+
+async function searchAttachments() {
+  panelLoading('att');
+
+  const q = qs('att-q').value.trim();
+  const mimeType = qs('att-mime').value;
+  const createdFrom = qs('att-created-from').value;
+  const createdTo = qs('att-created-to').value;
+
+  const params = new URLSearchParams({ limit: '50' });
+  if (q) params.set('q', q);
+  if (mimeType) params.set('mimeType', mimeType);
+  // Pass ISO 8601 createdFrom / createdTo
+  if (createdFrom) params.set('createdFrom', createdFrom);
+  if (createdTo) params.set('createdTo', createdTo);
+
+  try {
+    const res = await fetch(`${API}/search/attachments?${params}`);
+    const data = await res.json();
+    if (!res.ok) { panelError('att', data.message || 'Search failed'); return; }
+
+    const results = data.results || [];
+    if (!results.length) { panelEmpty('att'); return; }
+
+    const tbody = qs('att-tbody');
+    tbody.innerHTML = results.map(a => `
+      <tr>
+        <td>${escHtml(a.filename)}</td>
+        <td><code class="font-mono" style="font-size:12px">${escHtml(a.mimeType || '—')}</code></td>
+        <td>${fmtBytes(a.sizeBytes)}</td>
+        <td>${a.issueKey ? `<code class="font-mono">${escHtml(a.issueKey)}</code>` : '—'}</td>
+        <td>${fmtDate(a.created)}</td>
+      </tr>`).join('');
+
+    panelResults('att', data.total ?? results.length);
+  } catch (err) {
+    panelError('att', `Network error: ${err.message}`);
+  }
+}
+
+function resetAttachments() {
+  qs('att-q').value = '';
+  qs('att-mime').value = '';
+  qs('att-created-from').value = '';
+  qs('att-created-to').value = '';
+  hide('att-skeleton');
+  hide('att-empty');
+  hide('att-error');
+  hide('att-results');
+  hide('att-results-meta');
+  qs('att-tbody').innerHTML = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOARD & SPRINT SEARCH
+   ═══════════════════════════════════════════════════════════════════ */
+
+async function searchBoards() {
+  panelLoading('board');
+
+  const q = qs('board-q').value.trim();
+  const sprintState = qs('board-sprint-state').value;
+  const dateFrom = qs('board-date-from').value;
+  const dateTo = qs('board-date-to').value;
+
+  const params = new URLSearchParams({ limit: '50' });
+  if (q) params.set('q', q);
+  if (sprintState) params.set('sprintState', sprintState);
+  if (dateFrom) params.set('dateFrom', dateFrom);
+  if (dateTo) params.set('dateTo', dateTo);
+
+  try {
+    const res = await fetch(`${API}/search/boards-sprints?${params}`);
+    if (res.status === 403) {
+      const d = await res.json().catch(() => ({}));
+      if (d.error === 'BOARD_SCOPE_UNAVAILABLE') {
+        show('board-scope-banner');
+        hide('board-skeleton');
+        return;
+      }
+    }
+    const data = await res.json();
+    if (!res.ok) { panelError('board', data.message || 'Search failed'); return; }
+
+    const results = data.results || [];
+    if (!results.length) { panelEmpty('board'); return; }
+
+    const tbody = qs('board-tbody');
+    tbody.innerHTML = results.map(item => {
+      const isBoard = item.type === 'board';
+      return `<tr>
+        <td><span class="badge ${isBoard ? 'badge-active' : 'badge-degraded'}">${isBoard ? 'Board' : 'Sprint'}</span></td>
+        <td>${escHtml(item.name)}</td>
+        <td>${isBoard ? escHtml(item.boardType || '—') : escHtml(item.state || '—')}</td>
+        <td>${escHtml(item.projectKey || '—')}</td>
+        <td>${fmtDate(item.startDate)}</td>
+        <td>${fmtDate(item.endDate)}</td>
+      </tr>`;
+    }).join('');
+
+    panelResults('board', data.total ?? results.length);
+  } catch (err) {
+    panelError('board', `Network error: ${err.message}`);
+  }
+}
+
+function resetBoards() {
+  qs('board-q').value = '';
+  qs('board-sprint-state').value = '';
+  qs('board-date-from').value = '';
+  qs('board-date-to').value = '';
+  hide('board-skeleton');
+  hide('board-empty');
+  hide('board-error');
+  hide('board-results');
+  hide('board-results-meta');
+  hide('board-scope-banner');
+  qs('board-tbody').innerHTML = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OBJECT EXPLORER
+   ═══════════════════════════════════════════════════════════════════ */
+
+let _showUnchanged = false;
+
+async function loadShowUnchangedPref() {
+  try {
+    const res = await fetch(`${API}/preferences`);
+    if (res.ok) {
+      const data = await res.json();
+      const prefs = data.preferences || {};
+      _showUnchanged = Boolean(prefs['platform.objectExplorer.showUnchangedObjects']);
+      qs('oe-show-unchanged').checked = _showUnchanged;
+    }
+  } catch {
+    // Ignore — use default false
+  }
+}
+
+async function onShowUnchangedToggle(checkbox) {
+  _showUnchanged = checkbox.checked;
+
+  // Persist to preferences API
+  try {
+    await fetch(`${API}/preferences`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'platform.objectExplorer.showUnchangedObjects',
+        value: _showUnchanged,
+      }),
+    });
+  } catch {
+    // Non-fatal — preference may not persist but UI state is updated
+  }
+
+  // Re-fetch if we already have results
+  const backupPointId = qs('oe-backup-id').value.trim();
+  const nodeType = qs('oe-node-type').value;
+  if (backupPointId && nodeType) {
+    searchObjects();
+  }
+}
+
+function changeIndicatorBadge(indicator) {
+  const map = {
+    Added:     ['badge-added',     'Added'],
+    Modified:  ['badge-modified',  'Modified'],
+    Deleted:   ['badge-deleted',   'Deleted'],
+    Unchanged: ['badge-unchanged', 'Unchanged'],
+  };
+  const [cls, label] = map[indicator] || ['badge-unchanged', indicator];
+  return `<span class="badge ${cls}" aria-label="Change indicator: ${label}">${label}</span>`;
+}
+
+async function searchObjects() {
+  const backupPointId = qs('oe-backup-id').value.trim();
+  const nodeType = qs('oe-node-type').value;
+
+  if (!backupPointId || !nodeType) {
+    panelError('oe', 'Backup Point ID and Node Type are both required.');
+    return;
+  }
+
+  panelLoading('oe');
+
+  const parentId = qs('oe-parent-id').value.trim();
+  const changeIndicators = _showUnchanged
+    ? 'Added,Modified,Deleted,Unchanged'
+    : 'Added,Modified,Deleted';
+
+  const params = new URLSearchParams({
+    nodeType,
+    changeIndicator: changeIndicators,
+    limit: '50',
+  });
+  if (parentId) params.set('parentId', parentId);
+
+  try {
+    const res = await fetch(`${API}/backup-points/${encodeURIComponent(backupPointId)}/objects?${params}`);
+    const data = await res.json();
+    if (!res.ok) { panelError('oe', data.message || 'Object Explorer failed'); return; }
+
+    const results = data.results || [];
+    if (!results.length) { panelEmpty('oe'); return; }
+
+    const container = qs('oe-results');
+    container.innerHTML = '';
+
+    for (const obj of results) {
+      const div = document.createElement('div');
+      div.className = 'explorer-item';
+      div.setAttribute('role', 'article');
+      div.setAttribute('aria-label', `Object ${obj.id} — ${obj.changeIndicator}`);
+
+      const fieldsPreview = obj.fields
+        ? Object.entries(obj.fields)
+            .filter(([,v]) => v !== null && v !== undefined && v !== '')
+            .slice(0, 5)
+            .map(([k, v]) => {
+              const isChanged = obj.changedFields && obj.changedFields.includes(k);
+              const valStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+              return `<span ${isChanged ? 'class="changed-field"' : ''}>${escHtml(k)}: ${escHtml(valStr.slice(0,80))}${valStr.length > 80 ? '…' : ''}</span>`;
+            })
+            .join(' &nbsp;·&nbsp; ')
+        : '';
+
+      let changedFieldsNote = '';
+      if (obj.changedFields && obj.changedFields.length) {
+        changedFieldsNote = `<div style="margin-top:4px;font-size:11px;color:var(--amber)">Changed fields: ${obj.changedFields.map(escHtml).join(', ')}</div>`;
+      }
+
+      div.innerHTML = `
+        <div class="explorer-item-header">
+          ${changeIndicatorBadge(obj.changeIndicator)}
+          <span class="explorer-item-id">${escHtml(obj.id)}</span>
+          <span class="text-muted text-sm">${escHtml(obj.nodeType)}</span>
+        </div>
+        ${fieldsPreview || changedFieldsNote
+          ? `<div class="explorer-item-fields">${fieldsPreview}${changedFieldsNote}</div>`
+          : ''}`;
+
+      container.appendChild(div);
+    }
+
+    panelResults('oe', data.total ?? results.length);
+  } catch (err) {
+    panelError('oe', `Network error: ${err.message}`);
+  }
+}
+
+function resetExplorer() {
+  qs('oe-backup-id').value = '';
+  qs('oe-node-type').value = '';
+  qs('oe-parent-id').value = '';
+  hide('oe-skeleton');
+  hide('oe-empty');
+  hide('oe-error');
+  hide('oe-results');
+  hide('oe-results-meta');
+  qs('oe-results').innerHTML = '';
+}
+
+/* ─── Bootstrap ────────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  loadShowUnchangedPref();
+});
+</script>
+</body>
+</html>

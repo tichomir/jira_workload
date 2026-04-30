@@ -77,3 +77,24 @@ Deliverables:
 - ✅ QA: end-to-end and unit test suite for backup discovery pipeline — Qa Engineer (◉ Deep, 5 SP)
 
 ---
+### Sprint 3 | 2026-04-30 | ✅ done | 26 SP
+**Goal:** [Phase: Browse, Search, and Object Explorer]
+Deliver the backup browse and search capabilities across all protected Jira object types: global search, project inventory search, issue search with structured filter panel, attachment search, Board and Sprint search, Object Explorer with change indicators (Added, Modified, Deleted), and unchanged-objects hide/show toggle.
+
+Deliverables:
+- Global search across JiraProjectNode, JiraWorkflowNode, JiraCustomFieldNode by name and key across all connected Jira sites
+- Project inventory search: tokenised keyword on name, prefix/exact on key, filterable by projectTypeKey and archived boolean
+- Issue search within a backup point: tokenised keyword on summary and key; structured filter panel for issuetype, status, statusCategory, priority, assignee, reporter, labels, created, updated, resolved, projectKey
+- Attachment search: tokenised/prefix search on filename, filterable by mimeType and created date range
+- Board and Sprint search: tokenised search on name, filterable by sprint state and date range
+- Object Explorer: Added/Modified/Deleted change indicators per object with visual treatment
+- Unchanged objects hidden by default; platform-level toggle to show all objects
+
+**Delivered:**
+- ✅ Design browse, search, and Object Explorer architecture — Software Architect (◈ Standard, 3 SP)
+- ✅ Define search query schemas and change-indicator constants — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Implement search API endpoints and Object Explorer diff computation backend — Backend Developer (◉ Deep, 8 SP)
+- ✅ Implement browse, search UI and Object Explorer frontend — Frontend Developer (◉ Deep, 8 SP)
+- ✅ QA: end-to-end test suite for browse, search, and Object Explorer — Qa Engineer (◉ Deep, 5 SP)
+
+---

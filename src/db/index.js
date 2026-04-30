@@ -69,6 +69,47 @@ const customFieldDefinitions = new Map();
 // JiraCustomFieldContextNode records (keyed by cloudId:fieldId:contextId)
 const customFieldContextNodes = new Map();
 
+// ---------------------------------------------------------------------------
+// Sprint 3 — Browse, Search, and Object Explorer
+// ---------------------------------------------------------------------------
+
+// BackupPoint records (keyed by id)
+// Shape: { id, integrationId, createdAt, priorBackupPointId }
+const backupPoints = new Map();
+
+// BackupManifest records (keyed by `${backupPointId}:${nodeType}`)
+// Shape: { id, backupPointId, nodeType, entries: [{ id, contentHash }], computedAt }
+const backupManifests = new Map();
+
+// Search-indexed issue records (keyed by `${backupPointId}:${id}`)
+// Shape: { id, backupPointId, key, summary, issuetype, status, statusCategory,
+//          priority, assignee, reporter, labels, created, updated, resolved, projectKey }
+const searchIssues = new Map();
+
+// Search-indexed attachment records (keyed by `${backupPointId}:${id}`)
+// Shape: { id, backupPointId, filename, mimeType, sizeBytes, created, issueId, issueKey, storageKey }
+const searchAttachments = new Map();
+
+// Search-indexed board records (keyed by `${backupPointId}:${id}`)
+// Shape: { id, backupPointId, name, type, projectKey, sprintCount }
+const searchBoards = new Map();
+
+// Search-indexed sprint records (keyed by `${backupPointId}:${id}`)
+// Shape: { id, backupPointId, name, state, boardId, startDate, endDate, completeDate, issueCount }
+const searchSprints = new Map();
+
+// Search-indexed project records (keyed by id — cross-backup, site-level)
+// Shape: { id, siteId, key, name, projectTypeKey, archived, issueCount, lastUpdated }
+const searchProjects = new Map();
+
+// UserPreference records (keyed by `${userId}:${integrationId}:${key}`)
+// Shape: { id, userId, integrationId, key, value, updatedAt }
+const userPreferences = new Map();
+
+// Object snapshot store (keyed by `${backupPointId}:${nodeType}:${id}`)
+// Shape: { backupPointId, nodeType, id, fields }
+const objectSnapshots = new Map();
+
 /**
  * Clean up expired state records (called lazily).
  */
@@ -101,4 +142,14 @@ module.exports = {
   workflowNodes,
   customFieldDefinitions,
   customFieldContextNodes,
+  // Sprint 3
+  backupPoints,
+  backupManifests,
+  searchIssues,
+  searchAttachments,
+  searchBoards,
+  searchSprints,
+  searchProjects,
+  userPreferences,
+  objectSnapshots,
 };

@@ -6,6 +6,9 @@ const express = require('express');
 const oauthRouter = require('./routes/oauth');
 const integrationsRouter = require('./routes/integrations');
 const backupRouter = require('./routes/backup');
+const searchRouter = require('./routes/search');
+const backupPointsRouter = require('./routes/backupPoints');
+const preferencesRouter = require('./routes/preferences');
 const { assertPurgeCascadeAllowed } = require('./services/purgeCascade');
 
 const app = express();
@@ -22,6 +25,16 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/integrations', integrationsRouter);
 app.use('/api/v1/integrations', backupRouter);
+
+// Sprint 3 — Search and Object Explorer routes
+app.use('/api/v1/search', searchRouter);
+app.use('/api/v1/backup-points', backupPointsRouter);
+app.use('/api/v1/preferences', preferencesRouter);
+
+// Also mount at /api/ (without v1) for acceptance criteria compatibility
+app.use('/api/search', searchRouter);
+app.use('/api/backup-points', backupPointsRouter);
+app.use('/api/preferences', preferencesRouter);
 
 // Purge cascade endpoint (platform-layer, not scoped to a single integration)
 app.post('/api/v1/purge/cascade', (req, res) => {
@@ -51,6 +64,10 @@ app.get('/integrations/jira/callback', (req, res) => {
 
 app.get('/integrations/jira/manage', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'manage.html'));
+});
+
+app.get('/integrations/jira/browse', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'browse.html'));
 });
 
 app.get('/', (req, res) => {
