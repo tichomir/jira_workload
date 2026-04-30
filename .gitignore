@@ -1,0 +1,9 @@
+
+# PersonaForge sprint context (auto-generated, safe to delete)
+.persona-snapshot.md
+
+# Environment secrets — never commit real credentials
+.env
+
+# Node.js dependencies
+node_modules/

@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connecting Jira… — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <h1>Jira Connection</h1>
+  </div>
+
+  <!-- ── Loading ── -->
+  <div id="section-loading" class="card">
+    <div class="loading">
+      <div class="spinner"></div>
+      <span id="loading-msg">Processing OAuth callback…</span>
+    </div>
+  </div>
+
+  <!-- ── Error ── -->
+  <div id="section-error" class="card hidden">
+    <div class="banner banner-error" style="margin-bottom:0">
+      <span class="banner-icon">✖</span>
+      <div class="banner-body">
+        <div class="banner-title" id="error-title">Connection failed</div>
+        <div class="banner-msg" id="error-msg"></div>
+      </div>
+    </div>
+    <div class="mt-16">
+      <a href="/integrations/jira/connect" class="btn btn-primary">Try again</a>
+    </div>
+  </div>
+
+  <!-- ── Auto-selected site (read-only) ── -->
+  <div id="section-site-readonly" class="card hidden">
+    <div class="card-title">Atlassian Site</div>
+    <div class="card-subtitle">Your account has one Atlassian site — auto-selected.</div>
+    <div id="site-readonly-display" class="site-readonly">
+      <div class="site-avatar" id="site-readonly-avatar"></div>
+      <div>
+        <div class="site-name" id="site-readonly-name"></div>
+        <div class="site-url" id="site-readonly-url"></div>
+      </div>
+      <span class="badge badge-active" style="margin-left:auto">Auto-selected</span>
+    </div>
+  </div>
+
+  <!-- ── Site selector ── -->
+  <div id="section-sites" class="card hidden">
+    <div class="card-title">Select your Jira site</div>
+    <div class="card-subtitle">Multiple Atlassian sites were found on your account. Choose the one to connect.</div>
+
+    <!-- Search input -->
+    <div class="form-group mb-8">
+      <input type="text" id="site-search" class="form-input" placeholder="Search sites…"
+             oninput="filterSites(this.value)" />
+    </div>
+
+    <div id="sites-list"></div>
+
+    <div id="site-select-error" class="banner banner-error hidden" style="margin-top:8px">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body"><div class="banner-msg" id="site-select-error-msg"></div></div>
+    </div>
+
+    <div class="mt-16">
+      <button class="btn btn-primary" id="btn-select-site" disabled onclick="confirmSiteSelection()">
+        Connect Selected Site
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Scope validation ── -->
+  <div id="section-scopes" class="card hidden">
+    <div class="card-title">Permission Verification</div>
+    <div class="card-subtitle">Checking the 20 required Jira permissions granted to this connection.</div>
+
+    <!-- Board scope degradation banner -->
+    <div id="banner-board-degraded" class="banner banner-amber hidden">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body">
+        <div class="banner-title">Board and Sprint backup excluded — Jira Software license not detected on this site</div>
+        <div class="banner-msg">The <code>read:board-scope:jira-software</code> permission was not granted. Board and Kanban views are unavailable. Issue and Project sync will continue normally. <a href="#" onclick="return false;" style="color:inherit;font-weight:600">Re-authorize to enable boards</a></div>
+      </div>
+      <button class="banner-close" onclick="this.parentElement.classList.add('hidden')" title="Dismiss">×</button>
+    </div>
+
+    <!-- Scope fail banner (blocking) -->
+    <div id="banner-scope-fail" class="banner banner-error hidden">
+      <span class="banner-icon">✖</span>
+      <div class="banner-body">
+        <div class="banner-title">Required permissions missing</div>
+        <div class="banner-msg" id="banner-scope-fail-msg">One or more required scopes were not granted. Connection cannot proceed.</div>
+      </div>
+    </div>
+
+    <!-- Scope summary counts -->
+    <div class="scope-summary" id="scope-summary"></div>
+
+    <!-- Scope checklist -->
+    <ul class="scope-list" id="scope-list"></ul>
+  </div>
+
+  <!-- ── Project scope configuration ── -->
+  <div id="section-project-scope" class="card hidden">
+    <div class="card-title">Project Scope</div>
+    <div class="card-subtitle">Configure which projects to include in the workload sync.</div>
+
+    <div class="form-group">
+      <div class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="project-scope-mode" value="all" checked onchange="onScopeModeChange(this)">
+          <span><strong>All Projects</strong> — sync every project accessible to this account</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="project-scope-mode" value="selected" onchange="onScopeModeChange(this)">
+          <span><strong>Selected Projects</strong> — sync only specific projects</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Selected projects input (shown when selected mode active) -->
+    <div id="selected-projects-wrap" class="form-group hidden">
+      <label class="form-label">Project Keys / IDs <span class="req">*</span></label>
+      <div class="tag-input-wrap" id="tag-input-wrap" onclick="focusTagInput()">
+        <input type="text" id="project-tag-input" class="tag-text-input"
+               placeholder="Type a project key and press Enter…"
+               onkeydown="handleTagKeydown(event)" />
+      </div>
+      <div class="tag-hint">Press <kbd>Enter</kbd> or <kbd>,</kbd> after each project key (e.g. PROJ, WORK).</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="toggle-row">
+      <div class="toggle-text">
+        <div class="label">Include Archived Projects</div>
+        <div class="hint">When enabled, archived projects will be included in the sync.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="include-archived" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Finish button ── -->
+  <div id="section-finish" class="card hidden">
+    <div id="finish-success" class="banner banner-success hidden">
+      <span class="banner-icon">✔</span>
+      <div class="banner-body">
+        <div class="banner-title">Connection established!</div>
+        <div class="banner-msg" id="finish-success-msg"></div>
+      </div>
+    </div>
+
+    <div class="flex gap-8 items-center">
+      <button class="btn btn-success btn-lg" id="btn-finish" onclick="finishConnection()" disabled>
+        Finish Connection
+      </button>
+      <span class="text-muted text-sm" id="finish-note"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let _connectionId = null;
+let _finalConnectionId = null;
+let _selectedCloudId = null;
+let _scopeValidation = null;
+let _projectTags = [];
+
+/* ── Helpers ── */
+function qs(id) { return document.getElementById(id); }
+function show(id) { qs(id).classList.remove('hidden'); }
+function hide(id) { qs(id).classList.add('hidden'); }
+function setLoading(msg) {
+  show('section-loading');
+  qs('loading-msg').textContent = msg || 'Processing…';
+}
+function stopLoading() { hide('section-loading'); }
+function showError(title, msg) {
+  stopLoading();
+  qs('error-title').textContent = title;
+  qs('error-msg').textContent = msg;
+  show('section-error');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── Boot: parse URL params ── */
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('status');
+  const connectionId = params.get('connectionId');
+  const requiresSiteSelection = params.get('requiresSiteSelection') === 'true';
+  const errorCode = params.get('code');
+  const errorDesc = params.get('description');
+
+  if (status === 'error') {
+    const messages = {
+      STATE_INVALID:               'The authorization state was invalid or expired. Please try again.',
+      STATE_EXPIRED:               'The authorization request timed out (10 minutes). Please try again.',
+      ACCESS_DENIED:               'You denied the authorization request. Please try again and approve all permissions.',
+      TOKEN_EXCHANGE_FAILED:       'Failed to exchange the authorization code for tokens: ' + (errorDesc || ''),
+      ACCESSIBLE_RESOURCES_FAILED: 'Failed to retrieve your Atlassian sites: ' + (errorDesc || ''),
+      NO_SITES_FOUND:              'No accessible Atlassian sites were found on your account.',
+      SCOPE_VALIDATION_FAILED:     'Required permissions were not granted. Please re-authorize and approve all permissions.',
+    };
+    showError('Connection failed', messages[errorCode] || (errorDesc || 'An unknown error occurred.'));
+    return;
+  }
+
+  if (!connectionId) {
+    showError('Invalid callback', 'No connection ID found in the callback URL.');
+    return;
+  }
+
+  _connectionId = connectionId;
+  if (requiresSiteSelection) {
+    loadSites(connectionId);
+  } else {
+    _finalConnectionId = connectionId;
+    runScopeValidation(connectionId);
+  }
+});
+
+/* ── Site selection ── */
+let _allSiteOptions = []; // store for filter
+
+async function loadSites(connectionId) {
+  setLoading('Loading your Atlassian sites…');
+  try {
+    const res = await fetch(`${API}/oauth/sites?connectionId=${encodeURIComponent(connectionId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to load sites');
+
+    stopLoading();
+    if (data.autoSelected) {
+      // Single site: show read-only display then proceed
+      const site = data.sites[0];
+      renderAutoSelectedSite(site);
+      _selectedCloudId = data.selectedCloudId;
+      await finalizeSiteSelection(connectionId, data.selectedCloudId);
+    } else {
+      renderSiteSelector(data.sites, connectionId);
+    }
+  } catch (err) {
+    showError('Failed to load sites', err.message);
+  }
+}
+
+function renderAutoSelectedSite(site) {
+  const initials = site.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  qs('site-readonly-avatar').innerHTML = site.avatarUrl
+    ? `<img src="${escHtml(site.avatarUrl)}" alt="${escHtml(site.name)}" />`
+    : initials;
+  qs('site-readonly-name').textContent = site.name;
+  qs('site-readonly-url').textContent = site.url;
+  show('section-site-readonly');
+}
+
+function renderSiteSelector(sites, connectionId) {
+  _allSiteOptions = sites;
+  renderFilteredSites(sites);
+  show('section-sites');
+}
+
+function renderFilteredSites(sites) {
+  const list = qs('sites-list');
+  if (sites.length === 0) {
+    list.innerHTML = '<p class="text-muted text-sm" style="padding:8px 0">No sites match your search.</p>';
+    return;
+  }
+  list.innerHTML = sites.map(site => {
+    const initials = site.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const avatarHtml = site.avatarUrl
+      ? `<img src="${escHtml(site.avatarUrl)}" alt="${escHtml(site.name)}" />`
+      : initials;
+    const isSelected = site.cloudId === _selectedCloudId;
+    return `
+      <div class="site-option${isSelected ? ' selected' : ''}" data-cloud-id="${escHtml(site.cloudId)}" onclick="selectSite(this)">
+        <div class="site-avatar">${avatarHtml}</div>
+        <div>
+          <div class="site-name">${escHtml(site.name)}</div>
+          <div class="site-url">${escHtml(site.url)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterSites(query) {
+  const q = query.toLowerCase();
+  const filtered = _allSiteOptions.filter(s =>
+    s.name.toLowerCase().includes(q) || s.url.toLowerCase().includes(q)
+  );
+  renderFilteredSites(filtered);
+  // Re-mark selection if still visible
+  if (_selectedCloudId) {
+    const el = document.querySelector(`.site-option[data-cloud-id="${CSS.escape(_selectedCloudId)}"]`);
+    if (el) el.classList.add('selected');
+  }
+}
+
+function selectSite(el) {
+  document.querySelectorAll('.site-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  _selectedCloudId = el.dataset.cloudId;
+  qs('btn-select-site').disabled = false;
+}
+
+async function confirmSiteSelection() {
+  const btn = qs('btn-select-site');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  hide('site-select-error');
+  try {
+    await finalizeSiteSelection(_connectionId, _selectedCloudId);
+  } catch (err) {
+    qs('site-select-error-msg').textContent = err.message;
+    show('site-select-error');
+    btn.disabled = false;
+    btn.textContent = 'Connect Selected Site';
+  }
+}
+
+async function finalizeSiteSelection(connectionId, cloudId) {
+  setLoading('Finalizing connection…');
+  hide('section-sites');
+  const res = await fetch(`${API}/oauth/sites/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connectionId, cloudId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Site selection failed');
+  _finalConnectionId = data.connectionId;
+  stopLoading();
+  runScopeValidation(_finalConnectionId);
+}
+
+/* ── Scope validation ── */
+async function runScopeValidation(connectionId) {
+  setLoading('Verifying permissions…');
+  try {
+    const res = await fetch(`${API}/oauth/scopes/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Scope validation failed');
+    _scopeValidation = data;
+    stopLoading();
+    renderScopeChecklist(data);
+    show('section-project-scope');
+    show('section-finish');
+    updateFinishButton(data);
+  } catch (err) {
+    showError('Permission verification failed', err.message);
+  }
+}
+
+function renderScopeChecklist(validation) {
+  // Summary counts
+  const pass    = validation.entries.filter(e => e.granted).length;
+  const fail    = validation.missingRequiredScopes.length;
+  const warn    = validation.missingOptionalScopes.length;
+  qs('scope-summary').innerHTML = `
+    <span class="scope-count"><span class="dot dot-pass"></span>${pass} granted</span>
+    ${fail ? `<span class="scope-count"><span class="dot dot-fail"></span>${fail} missing (required)</span>` : ''}
+    ${warn ? `<span class="scope-count"><span class="dot dot-warn"></span>${warn} missing (optional)</span>` : ''}
+  `;
+
+  // Per-scope list
+  qs('scope-list').innerHTML = validation.entries.map(entry => {
+    let icon, statusClass, remedyClass;
+    if (entry.granted) {
+      icon = '✔'; statusClass = 'ok'; remedyClass = '';
+    } else if (!entry.required) {
+      icon = '⚠'; statusClass = 'warn'; remedyClass = 'warn';
+    } else {
+      icon = '✖'; statusClass = 'fail'; remedyClass = 'fail';
+    }
+    const badge = entry.required
+      ? '<span class="scope-badge badge-req">required</span>'
+      : '<span class="scope-badge badge-opt">optional</span>';
+    const remedy = entry.remediationMessage
+      ? `<div class="scope-remedy ${remedyClass}">${escHtml(entry.remediationMessage)}</div>` : '';
+    return `
+      <li class="scope-item">
+        <span class="scope-status ${statusClass}">${icon}</span>
+        <div class="scope-detail">
+          <span class="scope-name">${escHtml(entry.scope)}</span>${badge}
+          ${remedy}
+        </div>
+      </li>`;
+  }).join('');
+
+  // Banners
+  const onlyBoardMissing = validation.overallStatus === 'DEGRADED';
+  if (onlyBoardMissing) {
+    show('banner-board-degraded');
+  }
+  if (validation.overallStatus === 'FAIL') {
+    show('banner-scope-fail');
+    const missing = validation.missingRequiredScopes.join(', ');
+    qs('banner-scope-fail-msg').textContent =
+      `Missing required permissions: ${missing}. Please re-authorize and grant all requested permissions.`;
+  }
+  show('section-scopes');
+}
+
+function updateFinishButton(validation) {
+  const btn = qs('btn-finish');
+  if (validation.connectionAllowed) {
+    btn.disabled = false;
+    if (validation.overallStatus === 'DEGRADED') {
+      qs('finish-note').textContent = 'Board data excluded due to missing optional scope.';
+    }
+  } else {
+    btn.disabled = true;
+    qs('finish-note').textContent = 'Cannot finish — required permissions are missing. Please re-authorize.';
+  }
+}
+
+/* ── Project scope ── */
+function onScopeModeChange(radio) {
+  if (radio.value === 'selected') {
+    show('selected-projects-wrap');
+  } else {
+    hide('selected-projects-wrap');
+  }
+}
+
+function focusTagInput() { qs('project-tag-input').focus(); }
+
+function addTag(value) {
+  const key = value.trim().toUpperCase().replace(/,/g, '');
+  if (!key || _projectTags.includes(key)) return;
+  _projectTags.push(key);
+  renderTags();
+}
+
+function removeTag(key) {
+  _projectTags = _projectTags.filter(t => t !== key);
+  renderTags();
+}
+
+function renderTags() {
+  const wrap = qs('tag-input-wrap');
+  // Remove all existing tags (keep input)
+  wrap.querySelectorAll('.tag').forEach(t => t.remove());
+  const input = qs('project-tag-input');
+  _projectTags.forEach(key => {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.innerHTML = `${escHtml(key)}<button class="tag-remove" onclick="removeTag('${escHtml(key)}')" title="Remove">×</button>`;
+    wrap.insertBefore(tag, input);
+  });
+}
+
+function handleTagKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addTag(e.target.value);
+    e.target.value = '';
+  } else if (e.key === 'Backspace' && e.target.value === '' && _projectTags.length > 0) {
+    _projectTags.pop();
+    renderTags();
+  }
+}
+
+/* ── Finish connection ── */
+async function finishConnection() {
+  const btn = qs('btn-finish');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const mode = document.querySelector('input[name="project-scope-mode"]:checked').value;
+  const includeArchived = qs('include-archived').checked;
+
+  try {
+    const body = {
+      projectScopeMode: mode,
+      selectedProjectIds: mode === 'selected' ? _projectTags : [],
+      includeArchivedProjects: includeArchived,
+    };
+    const res = await fetch(`${API}/integrations/${_finalConnectionId}/project-scope`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.message || 'Failed to save project scope');
+    }
+
+    show('finish-success');
+    qs('finish-success-msg').textContent =
+      `Jira connection established. Project scope: ${mode === 'all' ? 'All Projects' : `${_projectTags.length} selected project(s)`}${includeArchived ? ', including archived' : ''}.`;
+    btn.textContent = 'Go to Integration Settings →';
+    btn.disabled = false;
+    btn.onclick = () => {
+      window.location.href = `/integrations/jira/manage?connectionId=${encodeURIComponent(_finalConnectionId)}`;
+    };
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Finish Connection';
+    alert('Error saving project scope: ' + err.message);
+  }
+}
+</script>
+</body>
+</html>

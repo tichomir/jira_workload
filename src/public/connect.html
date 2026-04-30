@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect Jira — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <h1>Connect Jira Cloud</h1>
+    <p>Establish an Atlassian OAuth 2.0 connection to start syncing your Jira workload data.</p>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="steps" id="steps">
+    <div class="step active" id="step-1">
+      <div class="step-num">1</div>
+      <span class="step-lbl">Choose path</span>
+    </div>
+    <div class="step" id="step-2">
+      <div class="step-num">2</div>
+      <span class="step-lbl">Configure</span>
+    </div>
+    <div class="step" id="step-3">
+      <div class="step-num">3</div>
+      <span class="step-lbl">Confirm &amp; Authorize</span>
+    </div>
+  </div>
+
+  <!-- ── STEP 1: Choose path ── -->
+  <div id="section-choose" class="card">
+    <div class="card-title">Select a connection method</div>
+    <div class="card-subtitle">Both paths use OAuth 2.0 Authorization Code + PKCE.</div>
+
+    <div class="path-cards">
+      <div class="path-card" id="card-express" onclick="selectPath('express')">
+        <div class="path-card-icon">⚡</div>
+        <h3>Express Connect</h3>
+        <p>Quick setup using our pre-configured Atlassian app. No credentials needed.</p>
+      </div>
+      <div class="path-card" id="card-manual" onclick="selectPath('manual')">
+        <div class="path-card-icon">🔧</div>
+        <h3>Manual Connect</h3>
+        <p>Use your own Atlassian app credentials — ideal for custom or restricted environments.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2a: Express ── -->
+  <div id="section-express" class="card hidden mt-16">
+    <div class="card-title">Express Connect</div>
+    <div class="card-subtitle">Click below to authorize with your Atlassian account. You will be redirected to Atlassian to grant permissions.</div>
+
+    <div id="express-error" class="banner banner-error hidden">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body">
+        <div class="banner-title">Connection failed</div>
+        <div class="banner-msg" id="express-error-msg"></div>
+      </div>
+    </div>
+
+    <button class="btn-atlassian" id="btn-express-connect" onclick="handleExpressConnect()">
+      <div class="atl-mark">A</div>
+      Connect with Atlassian
+    </button>
+
+    <p class="form-hint mt-8">You will be asked to approve 20 permissions required for full Jira sync.</p>
+
+    <hr class="divider" />
+    <button class="btn btn-secondary btn-sm" onclick="selectPath(null)">← Back</button>
+  </div>
+
+  <!-- ── STEP 2b: Manual form ── -->
+  <div id="section-manual" class="card hidden mt-16">
+    <div class="card-title">Manual Connect</div>
+    <div class="card-subtitle">Enter your Atlassian app credentials. All fields are required.</div>
+
+    <div id="manual-error" class="banner banner-error hidden">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body">
+        <div class="banner-title">Submission failed</div>
+        <div class="banner-msg" id="manual-error-msg"></div>
+      </div>
+    </div>
+
+    <form id="manual-form" novalidate>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="f-client-id">Client ID <span class="req">*</span></label>
+          <input type="text" id="f-client-id" class="form-input" placeholder="e.g. abc123xyz"
+                 autocomplete="off" spellcheck="false" />
+          <div class="field-error" id="err-client-id">Client ID is required and must not contain spaces.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="f-client-secret">Client Secret <span class="req">*</span></label>
+          <input type="password" id="f-client-secret" class="form-input" placeholder="Min 16 characters"
+                 autocomplete="new-password" />
+          <div class="field-error" id="err-client-secret">Client Secret must be at least 16 characters.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-site-url">Site URL <span class="req">*</span></label>
+        <input type="url" id="f-site-url" class="form-input" placeholder="https://yourcompany.atlassian.net"
+               autocomplete="url" />
+        <div class="field-error" id="err-site-url">Must be a valid HTTPS URL (e.g. https://yourcompany.atlassian.net).</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-redirect-uri">Redirect URI <span class="req">*</span></label>
+        <input type="url" id="f-redirect-uri" class="form-input" placeholder="https://yourapp.example.com/oauth/callback"
+               autocomplete="url" />
+        <div class="field-error" id="err-redirect-uri">Must be a valid HTTPS URL matching your Atlassian app registration.</div>
+        <div class="form-hint">Must exactly match the redirect URI registered in your Atlassian developer console.</div>
+      </div>
+
+      <div class="flex gap-8 mt-16">
+        <button type="submit" class="btn btn-primary" id="btn-manual-submit">
+          Continue →
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="selectPath(null)">← Back</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── STEP 3: Manual confirmation ── -->
+  <div id="section-confirm" class="card hidden mt-16">
+    <div class="card-title">Review and Authorize</div>
+    <div class="card-subtitle">Confirm the details below before you are redirected to Atlassian.</div>
+
+    <div class="banner banner-info mb-16">
+      <span class="banner-icon">ℹ</span>
+      <div class="banner-body">
+        <div class="banner-msg">Verify that the Redirect URI below exactly matches the value configured in your Atlassian app. A mismatch will cause the authorization to fail.</div>
+      </div>
+    </div>
+
+    <div id="confirm-details"></div>
+
+    <hr class="divider" />
+
+    <div class="card-subtitle mb-8">Permissions that will be requested (20 scopes):</div>
+    <div id="confirm-scopes" style="font-family:monospace;font-size:12px;color:var(--text-muted);line-height:1.8;"></div>
+
+    <hr class="divider" />
+
+    <div class="flex gap-8">
+      <button class="btn btn-atlassian" id="btn-confirm-authorize" onclick="handleManualAuthorize()">
+        <div class="atl-mark">A</div>
+        Authorize with Atlassian
+      </button>
+      <button class="btn btn-secondary" onclick="goToStep(2, 'manual')">← Edit</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ── Utilities ── */
+const API = '/api/v1';
+let _manualAuthUrl = null;
+let _selectedPath = null;
+
+function getDemoUserId() {
+  let id = localStorage.getItem('jw_demo_user_id');
+  if (!id) {
+    id = 'user-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('jw_demo_user_id', id);
+  }
+  return id;
+}
+
+function setStep(n) {
+  [1, 2, 3].forEach(i => {
+    const el = document.getElementById('step-' + i);
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  });
+}
+
+function showBanner(id, msg) {
+  document.getElementById(id).classList.remove('hidden');
+  const msgEl = document.getElementById(id + '-msg');
+  if (msgEl) msgEl.textContent = msg;
+}
+function hideBanner(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+/* ── Path selection ── */
+function selectPath(path) {
+  _selectedPath = path;
+  document.getElementById('card-express').classList.remove('selected');
+  document.getElementById('card-manual').classList.remove('selected');
+  document.getElementById('section-express').classList.add('hidden');
+  document.getElementById('section-manual').classList.add('hidden');
+  document.getElementById('section-confirm').classList.add('hidden');
+
+  if (path === 'express') {
+    document.getElementById('card-express').classList.add('selected');
+    document.getElementById('section-express').classList.remove('hidden');
+    setStep(2);
+  } else if (path === 'manual') {
+    document.getElementById('card-manual').classList.add('selected');
+    document.getElementById('section-manual').classList.remove('hidden');
+    setStep(2);
+  } else {
+    setStep(1);
+  }
+}
+
+function goToStep(n, path) {
+  _selectedPath = path || _selectedPath;
+  document.getElementById('section-confirm').classList.add('hidden');
+  document.getElementById('section-express').classList.add('hidden');
+  document.getElementById('section-manual').classList.add('hidden');
+  if (_selectedPath === 'manual') {
+    document.getElementById('section-manual').classList.remove('hidden');
+  } else if (_selectedPath === 'express') {
+    document.getElementById('section-express').classList.remove('hidden');
+  }
+  setStep(n);
+}
+
+/* ── Express path ── */
+async function handleExpressConnect() {
+  const btn = document.getElementById('btn-express-connect');
+  hideBanner('express-error');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Connecting…';
+
+  try {
+    const userId = getDemoUserId();
+    const res = await fetch(`${API}/oauth/express/redirect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to generate authorization URL');
+    }
+    // Redirect to Atlassian
+    window.location.href = data.authorizationUrl;
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = '<div class="atl-mark">A</div> Connect with Atlassian';
+    showBanner('express-error', err.message);
+  }
+}
+
+/* ── Manual path — client-side validation ── */
+function validateField(inputId, errorId, isValid, msg) {
+  const input = document.getElementById(inputId);
+  const error = document.getElementById(errorId);
+  const ok = isValid(input.value);
+  input.classList.toggle('is-error', !ok);
+  error.classList.toggle('show', !ok);
+  if (msg && !ok) error.textContent = msg;
+  return ok;
+}
+
+function isNonEmpty(v) { return v.trim().length > 0 && !/\s/.test(v.trim()); }
+function isMinLen(n)   { return v => v.length >= n; }
+function isHttpsUrl(v) {
+  try { const u = new URL(v); return u.protocol === 'https:'; } catch { return false; }
+}
+
+function validateManualForm() {
+  const v1 = validateField('f-client-id',     'err-client-id',     isNonEmpty,    null);
+  const v2 = validateField('f-client-secret', 'err-client-secret', isMinLen(16),  null);
+  const v3 = validateField('f-site-url',      'err-site-url',      isHttpsUrl,    null);
+  const v4 = validateField('f-redirect-uri',  'err-redirect-uri',  isHttpsUrl,    null);
+  return v1 && v2 && v3 && v4;
+}
+
+document.getElementById('manual-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hideBanner('manual-error');
+  if (!validateManualForm()) return;
+
+  const btn = document.getElementById('btn-manual-submit');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const res = await fetch(`${API}/oauth/manual/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId:     document.getElementById('f-client-id').value.trim(),
+        clientSecret: document.getElementById('f-client-secret').value,
+        siteUrl:      document.getElementById('f-site-url').value.trim(),
+        redirectUri:  document.getElementById('f-redirect-uri').value.trim(),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      // Map server error codes to friendly field errors
+      const fieldMap = {
+        INVALID_CLIENT_ID:     ['f-client-id',     'err-client-id',     data.message],
+        INVALID_CLIENT_SECRET: ['f-client-secret', 'err-client-secret', data.message],
+        INVALID_SITE_URL:      ['f-site-url',      'err-site-url',      data.message],
+        INVALID_REDIRECT_URI:  ['f-redirect-uri',  'err-redirect-uri',  data.message],
+      };
+      const mapping = fieldMap[data.error];
+      if (mapping) {
+        const [inputId, errorId, msg] = mapping;
+        document.getElementById(inputId).classList.add('is-error');
+        const errEl = document.getElementById(errorId);
+        errEl.textContent = msg;
+        errEl.classList.add('show');
+      } else {
+        showBanner('manual-error', data.message || 'An unexpected error occurred.');
+      }
+      return;
+    }
+    _manualAuthUrl = data.authorizationUrl;
+    renderConfirmation(data.confirmationDetails);
+    setStep(3);
+    document.getElementById('section-manual').classList.add('hidden');
+    document.getElementById('section-confirm').classList.remove('hidden');
+  } catch (err) {
+    showBanner('manual-error', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Continue →';
+  }
+});
+
+/* ── Render confirmation ── */
+function renderConfirmation(details) {
+  const container = document.getElementById('confirm-details');
+  container.innerHTML = [
+    ['Client ID',     details.clientIdMasked],
+    ['Redirect URI',  details.redirectUri],
+    ['Site URL',      details.siteUrl],
+  ].map(([label, value]) => `
+    <div class="confirm-row">
+      <span class="confirm-label">${label}</span>
+      <span class="confirm-value">${escHtml(value)}</span>
+    </div>
+  `).join('');
+
+  document.getElementById('confirm-scopes').innerHTML =
+    details.requestedScopes.map(s => `<span style="display:inline-block;margin:1px 6px 1px 0">${escHtml(s)}</span>`).join('');
+}
+
+function handleManualAuthorize() {
+  if (_manualAuthUrl) window.location.href = _manualAuthUrl;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

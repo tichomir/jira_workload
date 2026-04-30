@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Integration Settings — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="container">
+
+  <!-- ── Token health banners (persistent/dismissible) ── -->
+  <!-- Persistent 401/expired banner -->
+  <div id="banner-expired" class="banner banner-error hidden">
+    <span class="banner-icon">✖</span>
+    <div class="banner-body">
+      <div class="banner-title">Jira integration has expired</div>
+      <div class="banner-msg">Your refresh token has expired due to 90 days of inactivity. All sync jobs are paused.
+        <strong><a href="/integrations/jira/connect" style="color:inherit">Re-authorize now</a></strong> to resume syncing.</div>
+    </div>
+    <!-- No close button: persistent until re-authorized -->
+  </div>
+
+  <!-- Dismissible expiring-soon banner -->
+  <div id="banner-expiring-soon" class="banner banner-amber hidden">
+    <span class="banner-icon">⚠</span>
+    <div class="banner-body">
+      <div class="banner-title">Jira integration token expiring soon</div>
+      <div class="banner-msg">Your integration token expires in approximately
+        <strong><span id="days-remaining">10</span> days</strong> due to inactivity.
+        <a href="/integrations/jira/connect" style="color:inherit;font-weight:600">Re-authorize now</a> to prevent sync interruption.
+      </div>
+    </div>
+    <button class="banner-close" id="btn-dismiss-expiry" title="Dismiss">×</button>
+  </div>
+
+  <!-- Board scope degradation banner -->
+  <div id="banner-board-degraded" class="banner banner-amber hidden">
+    <span class="banner-icon">⚠</span>
+    <div class="banner-body">
+      <div class="banner-title">Board and Sprint backup excluded — Jira Software license not detected on this site</div>
+      <div class="banner-msg">Board and Kanban views are unavailable. Issue and Project sync continue normally.
+        <a href="/integrations/jira/connect" style="color:inherit;font-weight:600">Re-authorize to enable boards</a></div>
+    </div>
+    <button class="banner-close" onclick="this.parentElement.classList.add('hidden')" title="Dismiss">×</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="section-loading" class="card">
+    <div class="loading">
+      <div class="spinner"></div>
+      <span>Loading integration details…</span>
+    </div>
+  </div>
+
+  <!-- Load error -->
+  <div id="section-load-error" class="card hidden">
+    <div class="banner banner-error" style="margin-bottom:0">
+      <span class="banner-icon">✖</span>
+      <div class="banner-body">
+        <div class="banner-title">Failed to load integration</div>
+        <div class="banner-msg" id="load-error-msg"></div>
+      </div>
+    </div>
+    <div class="mt-16">
+      <a href="/integrations/jira/connect" class="btn btn-primary">Connect a new integration</a>
+    </div>
+  </div>
+
+  <!-- ── Connection overview ── -->
+  <div id="section-overview" class="card hidden">
+    <div class="flex items-center gap-16 mb-16" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="card-title" id="overview-site-name">—</div>
+        <div class="text-muted text-sm" id="overview-site-url"></div>
+      </div>
+      <div class="flex items-center gap-8">
+        <span id="overview-status-badge" class="badge"></span>
+        <span class="text-muted text-sm" id="overview-path"></span>
+      </div>
+    </div>
+    <div class="flex gap-16" style="flex-wrap:wrap">
+      <div class="text-sm"><span class="text-muted">Connected: </span><strong id="overview-connected-at">—</strong></div>
+      <div class="text-sm"><span class="text-muted">Last sync: </span><strong id="overview-last-synced">—</strong></div>
+      <div class="text-sm"><span class="text-muted">Cloud ID: </span><code id="overview-cloud-id" class="font-mono" style="font-size:12px">—</code></div>
+    </div>
+  </div>
+
+  <!-- ── Project scope configuration ── -->
+  <div id="section-project-scope" class="card hidden">
+    <div class="card-title">Project Scope</div>
+    <div class="card-subtitle">Control which projects are included in the workload sync.</div>
+
+    <div id="scope-save-success" class="banner banner-success hidden">
+      <span class="banner-icon">✔</span>
+      <div class="banner-body"><div class="banner-msg">Project scope saved successfully.</div></div>
+    </div>
+    <div id="scope-save-error" class="banner banner-error hidden">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body"><div class="banner-msg" id="scope-save-error-msg"></div></div>
+    </div>
+
+    <div class="form-group">
+      <div class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="ps-mode" value="all" checked onchange="onScopeModeChange(this)">
+          <span><strong>All Projects</strong> — sync every project accessible to this account</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="ps-mode" value="selected" onchange="onScopeModeChange(this)">
+          <span><strong>Selected Projects</strong> — sync only specific projects</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="selected-projects-wrap" class="form-group hidden">
+      <label class="form-label">Project Keys / IDs</label>
+      <div class="tag-input-wrap" id="tag-input-wrap" onclick="focusTagInput()">
+        <input type="text" id="project-tag-input" class="tag-text-input"
+               placeholder="Type a project key and press Enter…"
+               onkeydown="handleTagKeydown(event)" />
+      </div>
+      <div class="tag-hint">Press <kbd>Enter</kbd> or <kbd>,</kbd> after each project key (e.g. PROJ, WORK).</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="toggle-row">
+      <div class="toggle-text">
+        <div class="label">Include Archived Projects</div>
+        <div class="hint">When enabled, archived projects will be included in the sync.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="include-archived" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <hr class="divider" />
+    <button class="btn btn-primary" id="btn-save-scope" onclick="saveProjectScope()">Save Scope Settings</button>
+  </div>
+
+  <!-- ── Integration management / lifecycle ── -->
+  <div id="section-lifecycle" class="card hidden">
+    <div class="card-title">Integration Management</div>
+    <div class="card-subtitle">Manage the lifecycle of this Jira integration.</div>
+
+    <div id="delete-error" class="banner banner-error hidden">
+      <span class="banner-icon">⚠</span>
+      <div class="banner-body"><div class="banner-msg" id="delete-error-msg"></div></div>
+    </div>
+
+    <div id="soft-delete-done" class="banner banner-success hidden">
+      <span class="banner-icon">✔</span>
+      <div class="banner-body">
+        <div class="banner-title">Integration scheduled for deletion</div>
+        <div class="banner-msg" id="soft-delete-done-msg"></div>
+      </div>
+    </div>
+
+    <div id="hard-delete-done" class="banner banner-error hidden">
+      <span class="banner-icon">✖</span>
+      <div class="banner-body">
+        <div class="banner-title">Integration permanently deleted</div>
+        <div class="banner-msg">All data, tokens, and credentials have been purged immediately.</div>
+      </div>
+    </div>
+
+    <div class="flex gap-8 items-center" style="flex-wrap:wrap">
+      <button class="btn btn-warning" id="btn-soft-delete" onclick="showSoftDeleteModal()">
+        Delete Integration
+      </button>
+      <!-- Hard Delete: only visible when sandbox=true -->
+      <button class="btn btn-danger" id="btn-hard-delete" onclick="showHardDeleteModal()" style="display:none">
+        Hard Delete (Sandbox)
+      </button>
+    </div>
+    <p class="form-hint mt-8">Deleting the integration will pause all sync jobs. Data can be restored within 30 days.</p>
+  </div>
+
+</div>
+
+<!-- ── Soft Delete modal ── -->
+<div class="modal-overlay hidden" id="modal-soft-delete">
+  <div class="modal">
+    <div class="modal-title">Delete Integration?</div>
+    <div class="modal-body">
+      <p>This will <strong>soft delete</strong> the Jira integration:</p>
+      <ul style="margin:10px 0 0 18px;font-size:14px;color:var(--text)">
+        <li>All sync jobs will be paused immediately.</li>
+        <li>Your data will be retained for <strong>30 days</strong> before permanent deletion.</li>
+        <li>You can restore this integration within the retention window.</li>
+      </ul>
+      <div class="modal-warning">⚠ After 30 days all tokens, credentials, and sync data will be permanently purged.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-soft-delete')">Cancel</button>
+      <button class="btn btn-warning" id="btn-confirm-soft-delete" onclick="executeSoftDelete()">
+        Delete with 30-day retention
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Hard Delete modal ── -->
+<div class="modal-overlay hidden" id="modal-hard-delete">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--danger)">⚠ Permanently Delete Integration?</div>
+    <div class="modal-body">
+      <p><strong>This action is irreversible.</strong></p>
+      <p style="margin-top:8px">A hard delete will <strong>immediately and permanently</strong> purge:</p>
+      <ul style="margin:10px 0 0 18px;font-size:14px;color:var(--text)">
+        <li>All OAuth tokens and credentials</li>
+        <li>All sync data and history</li>
+        <li>All lifecycle events and audit logs</li>
+      </ul>
+      <div class="modal-warning">⚠ This cannot be undone. Available in sandbox environments only.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-hard-delete')">Cancel</button>
+      <button class="btn btn-danger" id="btn-confirm-hard-delete" onclick="executeHardDelete()">
+        Permanently Delete — I understand this is irreversible
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let _connectionId = null;
+let _connection = null;
+let _projectTags = [];
+
+/* ── Helpers ── */
+function qs(id) { return document.getElementById(id); }
+function show(id) { qs(id).classList.remove('hidden'); }
+function hide(id) { qs(id).classList.add('hidden'); }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/* ── Boot ── */
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  _connectionId = params.get('connectionId');
+  if (!_connectionId) {
+    hide('section-loading');
+    qs('load-error-msg').textContent = 'No connectionId found in the URL. Navigate here from the connection wizard.';
+    show('section-load-error');
+    return;
+  }
+  loadAll();
+});
+
+async function loadAll() {
+  try {
+    const [connRes, healthRes] = await Promise.all([
+      fetch(`${API}/integrations/${_connectionId}`),
+      fetch(`${API}/integrations/${_connectionId}/token-health`),
+    ]);
+
+    if (!connRes.ok) {
+      const d = await connRes.json();
+      throw new Error(d.message || 'Failed to load connection');
+    }
+    _connection = await connRes.json();
+
+    let health = null;
+    if (healthRes.ok) {
+      health = await healthRes.json();
+    }
+
+    hide('section-loading');
+    renderOverview(_connection);
+    renderTokenHealthBanners(_connection, health);
+    renderProjectScope(_connection);
+    renderLifecycle(_connection);
+
+    show('section-overview');
+    show('section-project-scope');
+    show('section-lifecycle');
+  } catch (err) {
+    hide('section-loading');
+    qs('load-error-msg').textContent = err.message;
+    show('section-load-error');
+  }
+}
+
+/* ── Overview ── */
+function renderOverview(c) {
+  qs('overview-site-name').textContent = c.siteName || '—';
+  qs('overview-site-url').textContent  = c.siteUrl  || '';
+  qs('overview-connected-at').textContent = fmtDate(c.connectedAt);
+  qs('overview-last-synced').textContent  = c.lastSyncedAt ? fmtDate(c.lastSyncedAt) : 'Never';
+  qs('overview-cloud-id').textContent     = c.cloudId || '—';
+  qs('overview-path').textContent         = c.connectionPath === 'manual' ? 'Manual path' : 'Express path';
+
+  const badge = qs('overview-status-badge');
+  const statusMap = {
+    active:       ['badge-active',   '● Active'],
+    degraded:     ['badge-degraded', '● Degraded'],
+    expired:      ['badge-expired',  '● Expired'],
+    soft_deleted: ['badge-deleted',  '● Deleted'],
+  };
+  const [cls, label] = statusMap[c.status] || ['badge-deleted', c.status];
+  badge.className = `badge ${cls}`;
+  badge.textContent = label;
+}
+
+/* ── Token health banners ── */
+function renderTokenHealthBanners(connection, health) {
+  if (connection.status === 'expired' || (health && health.status === 'expired')) {
+    show('banner-expired');
+  }
+  if (health && health.status === 'expiring_soon') {
+    qs('days-remaining').textContent = health.daysRemaining || '10';
+    show('banner-expiring-soon');
+    qs('btn-dismiss-expiry').addEventListener('click', () => {
+      hide('banner-expiring-soon');
+    });
+  }
+  if (connection.boardScopeDegraded) {
+    show('banner-board-degraded');
+  }
+}
+
+/* ── Project scope ── */
+function renderProjectScope(c) {
+  // Set radio
+  const mode = c.projectScopeMode || 'all';
+  const radio = document.querySelector(`input[name="ps-mode"][value="${mode}"]`);
+  if (radio) {
+    radio.checked = true;
+    if (mode === 'selected') show('selected-projects-wrap');
+  }
+
+  // Set tags
+  _projectTags = Array.isArray(c.selectedProjectIds) ? [...c.selectedProjectIds] : [];
+  renderTags();
+
+  // Set toggle
+  qs('include-archived').checked = Boolean(c.includeArchivedProjects);
+}
+
+function onScopeModeChange(radio) {
+  if (radio.value === 'selected') show('selected-projects-wrap');
+  else hide('selected-projects-wrap');
+}
+
+function focusTagInput() { qs('project-tag-input').focus(); }
+
+function addTag(value) {
+  const key = value.trim().toUpperCase().replace(/,/g, '');
+  if (!key || _projectTags.includes(key)) return;
+  _projectTags.push(key);
+  renderTags();
+}
+function removeTag(key) {
+  _projectTags = _projectTags.filter(t => t !== key);
+  renderTags();
+}
+function renderTags() {
+  const wrap = qs('tag-input-wrap');
+  wrap.querySelectorAll('.tag').forEach(t => t.remove());
+  const input = qs('project-tag-input');
+  _projectTags.forEach(key => {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.innerHTML = `${escHtml(key)}<button class="tag-remove" onclick="removeTag('${escHtml(key)}')" title="Remove">×</button>`;
+    wrap.insertBefore(tag, input);
+  });
+}
+function handleTagKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addTag(e.target.value);
+    e.target.value = '';
+  } else if (e.key === 'Backspace' && e.target.value === '' && _projectTags.length > 0) {
+    _projectTags.pop();
+    renderTags();
+  }
+}
+
+async function saveProjectScope() {
+  hide('scope-save-success');
+  hide('scope-save-error');
+  const btn = qs('btn-save-scope');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const mode = document.querySelector('input[name="ps-mode"]:checked').value;
+  const body = {
+    projectScopeMode: mode,
+    selectedProjectIds: mode === 'selected' ? _projectTags : [],
+    includeArchivedProjects: qs('include-archived').checked,
+  };
+
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}/project-scope`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to save');
+    show('scope-save-success');
+  } catch (err) {
+    qs('scope-save-error-msg').textContent = err.message;
+    show('scope-save-error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Scope Settings';
+  }
+}
+
+/* ── Lifecycle ── */
+function renderLifecycle(c) {
+  // Show Hard Delete button only when hardDeleteAllowed AND sandbox=true
+  if (c.hardDeleteAllowed) {
+    qs('btn-hard-delete').style.display = '';
+  }
+  // If already deleted, disable delete buttons
+  if (c.status === 'soft_deleted' || c.status === 'hard_deleted') {
+    qs('btn-soft-delete').disabled = true;
+    qs('btn-hard-delete').disabled = true;
+  }
+}
+
+/* ── Soft Delete modal ── */
+function showSoftDeleteModal() { show('modal-soft-delete'); }
+function closeModal(id) { hide(id); }
+
+async function executeSoftDelete() {
+  const btn = qs('btn-confirm-soft-delete');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  hide('delete-error');
+
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteMode: 'soft', retentionDays: 30 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Delete failed');
+
+    closeModal('modal-soft-delete');
+    const purge = data.scheduledPurgeAt ? new Date(data.scheduledPurgeAt).toLocaleDateString() : '30 days';
+    qs('soft-delete-done-msg').textContent =
+      `Integration soft-deleted. Data will be retained until ${purge} before permanent purge. You may restore within this window.`;
+    show('soft-delete-done');
+    qs('btn-soft-delete').disabled = true;
+    qs('btn-hard-delete').disabled = true;
+
+    // Update status badge
+    const badge = qs('overview-status-badge');
+    badge.className = 'badge badge-deleted';
+    badge.textContent = '● Deleted';
+  } catch (err) {
+    qs('delete-error-msg').textContent = err.message;
+    show('delete-error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Delete with 30-day retention';
+    closeModal('modal-soft-delete');
+  }
+}
+
+/* ── Hard Delete modal ── */
+function showHardDeleteModal() { show('modal-hard-delete'); }
+
+async function executeHardDelete() {
+  const btn = qs('btn-confirm-hard-delete');
+  btn.disabled = true;
+  btn.textContent = 'Deleting permanently…';
+  hide('delete-error');
+
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteMode: 'hard' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Hard delete failed');
+
+    closeModal('modal-hard-delete');
+    show('hard-delete-done');
+    qs('btn-soft-delete').disabled = true;
+    qs('btn-hard-delete').disabled = true;
+    hide('section-project-scope');
+
+    // Update status badge
+    const badge = qs('overview-status-badge');
+    badge.className = 'badge badge-deleted';
+    badge.textContent = '● Deleted';
+  } catch (err) {
+    qs('delete-error-msg').textContent = err.message;
+    show('delete-error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Permanently Delete — I understand this is irreversible';
+    closeModal('modal-hard-delete');
+  }
+}
+</script>
+</body>
+</html>
