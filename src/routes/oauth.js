@@ -231,9 +231,9 @@ router.post('/express/redirect', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /oauth/express/callback
+// GET /oauth/express/callback  (also aliased as GET /callback when mounted at /oauth)
 // ---------------------------------------------------------------------------
-router.get('/express/callback', async (req, res) => {
+async function expressCallbackHandler(req, res) {
   const { code, state, error, error_description } = req.query;
 
   if (error) {
@@ -353,7 +353,14 @@ router.get('/express/callback', async (req, res) => {
 
   const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?connectionId=${pendingConnectionId}&status=success&requiresSiteSelection=true`;
   return res.redirect(redirectUrl);
-});
+}
+
+// Canonical API path (existing)
+router.get('/express/callback', expressCallbackHandler);
+
+// Alias: matches ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
+// when this router is mounted at /oauth in app.js.
+router.get('/callback', expressCallbackHandler);
 
 // ---------------------------------------------------------------------------
 // POST /oauth/manual/connect

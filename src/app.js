@@ -26,6 +26,8 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // API v1 routes
 app.use('/api/v1/oauth', oauthRouter);
+// Also mount at /oauth so the Atlassian redirect URI https://host/oauth/callback resolves.
+app.use('/oauth', oauthRouter);
 app.use('/api/v1/integrations', integrationsRouter);
 app.use('/api/v1/integrations', backupRouter);
 
