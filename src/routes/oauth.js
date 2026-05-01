@@ -237,12 +237,12 @@ async function expressCallbackHandler(req, res) {
   const { code, state, error, error_description } = req.query;
 
   if (error) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=ACCESS_DENIED&description=${encodeURIComponent(error_description || error)}`;
+    const redirectUrl = `/callback.html?status=error&code=ACCESS_DENIED&description=${encodeURIComponent(error_description || error)}`;
     return res.redirect(redirectUrl);
   }
 
   if (!code || !state) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=STATE_INVALID&description=Missing+code+or+state`;
+    const redirectUrl = `/callback.html?status=error&code=STATE_INVALID&description=Missing+code+or+state`;
     return res.redirect(redirectUrl);
   }
 
@@ -250,13 +250,13 @@ async function expressCallbackHandler(req, res) {
   const stateRecord = db.pendingStates.get(state);
 
   if (!stateRecord) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=STATE_INVALID&description=State+not+found`;
+    const redirectUrl = `/callback.html?status=error&code=STATE_INVALID&description=State+not+found`;
     return res.redirect(redirectUrl);
   }
 
   if (new Date(stateRecord.expiresAt) < new Date()) {
     db.pendingStates.delete(state);
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=STATE_EXPIRED&description=State+TTL+exceeded`;
+    const redirectUrl = `/callback.html?status=error&code=STATE_EXPIRED&description=State+TTL+exceeded`;
     return res.redirect(redirectUrl);
   }
 
@@ -273,7 +273,7 @@ async function expressCallbackHandler(req, res) {
       codeVerifier: stateRecord.codeVerifier,
     });
   } catch (err) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=TOKEN_EXCHANGE_FAILED&description=${encodeURIComponent(err.message)}`;
+    const redirectUrl = `/callback.html?status=error&code=TOKEN_EXCHANGE_FAILED&description=${encodeURIComponent(err.message)}`;
     return res.redirect(redirectUrl);
   }
 
@@ -284,18 +284,18 @@ async function expressCallbackHandler(req, res) {
   try {
     sites = await fetchAccessibleResources(access_token);
   } catch (err) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=ACCESSIBLE_RESOURCES_FAILED&description=${encodeURIComponent(err.message)}`;
+    const redirectUrl = `/callback.html?status=error&code=ACCESSIBLE_RESOURCES_FAILED&description=${encodeURIComponent(err.message)}`;
     return res.redirect(redirectUrl);
   }
 
   if (!sites || sites.length === 0) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=NO_SITES_FOUND&description=No+accessible+Atlassian+sites+found`;
+    const redirectUrl = `/callback.html?status=error&code=NO_SITES_FOUND&description=No+accessible+Atlassian+sites+found`;
     return res.redirect(redirectUrl);
   }
 
   const validationResult = validateScopes(grantedScopes, null, null);
   if (!validationResult.connectionAllowed) {
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?status=error&code=SCOPE_VALIDATION_FAILED&description=Required+scopes+missing`;
+    const redirectUrl = `/callback.html?status=error&code=SCOPE_VALIDATION_FAILED&description=Required+scopes+missing`;
     return res.redirect(redirectUrl);
   }
 
@@ -330,7 +330,7 @@ async function expressCallbackHandler(req, res) {
     };
     db.cloudSites.set(cloudSite.id, cloudSite);
 
-    const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?connectionId=${connection.id}&status=success`;
+    const redirectUrl = `/callback.html?connectionId=${connection.id}&status=success`;
     return res.redirect(redirectUrl);
   }
 
@@ -351,7 +351,7 @@ async function expressCallbackHandler(req, res) {
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min to complete site selection
   });
 
-  const redirectUrl = `${FRONTEND_BASE}/integrations/jira/callback?connectionId=${pendingConnectionId}&status=success&requiresSiteSelection=true`;
+  const redirectUrl = `/callback.html?connectionId=${pendingConnectionId}&status=success&requiresSiteSelection=true`;
   return res.redirect(redirectUrl);
 }
 

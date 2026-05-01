@@ -49,9 +49,29 @@ Before starting the demo, ensure the following are in place:
 
 3. Wait for the log line:
    ```
-   jira_workload listening on port 4000
+   Jira Workload backend listening on port 4000
    ```
-4. Open a browser and navigate to **http://localhost:4000/connect.html**.
+4. To stream live logs from the running container in a second terminal, use:
+   ```bash
+   podman-compose logs -f app
+   ```
+   You should see the startup line followed by one line per incoming HTTP request
+   (e.g. `GET /health`, `GET /oauth/callback?...`).
+
+   > **Note — `-f` flag conflict in older podman-compose versions:**
+   > The invocation `podman-compose -f podman-compose.yml logs -f` may fail because
+   > podman-compose parses the first `-f` as the compose-file selector and the second
+   > `-f` as `--follow`, causing a flag collision in versions < 1.1.
+   > **Use the short form instead:**
+   > ```bash
+   > # Correct — no file flag needed; podman-compose.yml is the default
+   > podman-compose logs -f app
+   >
+   > # If you need to specify the file explicitly, use the long form:
+   > podman-compose --file podman-compose.yml logs --follow app
+   > ```
+
+5. Open a browser and navigate to **http://localhost:4000/connect.html**.
 5. Alternatively, run the health check from a terminal:
    ```bash
    curl http://localhost:4000/health
@@ -95,7 +115,7 @@ Before starting the demo, ensure the following are in place:
 - All 20 required OAuth scopes appear as green checkmarks.
 - If `read:board-scope:jira-software` is missing, a non-blocking amber banner is shown:
   > Board and Sprint data will be excluded from backups.
-- The integration is now visible at **http://localhost:4000/manage.html**.
+- After clicking **"Finish Connection"**, the browser automatically redirects to **`http://localhost:4000/manage.html?connectionId=<uuid>`** (the connectionId is appended automatically — do not navigate there manually without it).
 
 ### Screenshot
 
@@ -111,7 +131,7 @@ Before starting the demo, ensure the following are in place:
 
 ### Steps
 
-1. Navigate to **http://localhost:4000/manage.html**.
+1. After completing Section 2 the browser will have redirected you to **`http://localhost:4000/manage.html?connectionId=<uuid>`**. Copy the full URL from the address bar for future reference. If you need to return here later, use that saved URL (the `connectionId` query parameter is required).
 2. Locate the connected integration in the list.
 3. Click **"Back Up Now"** next to the integration.
 4. The UI shows a progress indicator: _Backup running…_
@@ -386,5 +406,7 @@ stop.bat         # Windows CMD
 Data volumes persist across restarts. To do a clean reset:
 
 ```bash
-podman-compose -f podman-compose.yml down -v   # removes named volumes — all backup data is erased
+podman-compose down -v                          # removes named volumes — all backup data is erased
+# Alternative (long-form file flag — avoids -f flag conflict):
+podman-compose --file podman-compose.yml down -v
 ```

@@ -507,7 +507,7 @@ async function finishConnection() {
     btn.textContent = 'Go to Integration Settings →';
     btn.disabled = false;
     btn.onclick = () => {
-      window.location.href = `/integrations/jira/manage?connectionId=${encodeURIComponent(_finalConnectionId)}`;
+      window.location.href = `/manage.html?connectionId=${encodeURIComponent(_finalConnectionId)}`;
     };
   } catch (err) {
     btn.disabled = false;

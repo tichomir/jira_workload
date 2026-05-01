@@ -275,3 +275,33 @@ And then this in in the page:
 - ✅ QA: validate full OAuth 3LO callback flow end-to-end — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 11 | 2026-05-01 | ✅ done | 13 SP
+**Goal:** Issues: 
+1. When I try to run: t.hadzhiev@vsap-mac-CT4J57WCR2 jira_workload % podman-compose logs -f app          
+Jira Workload backend listening on port 4000
+ I don't see any logs: 
+
+2. podman-compose -f podman-compose.yml logs -f.  <- this doesn't work it fails with: 
+podman-compose -f podman-compose.yml logs -f
+
+3. As suggested in the DEMO.md  when I open the http://localhost:4000/manage.html
+
+I get this: ✖
+Failed to load integration
+No connectionId found in the URL. Navigate here from the connection wizard.
+
+even though before that the integration was reported to be successful. 
+
+4. Maybe try to use in integration tests the following for express. Here are the values in my env: 
+
+ATLASSIAN_CLIENT_ID=1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9
+ATLASSIAN_CLIENT_SECRET=ATOA2Aa0QE5e0OjgSP02EfWRuJBgpg3HyHX-CsGAKk3YuUIeJC0j4ct3YAPCszr9-7_b6A3016F0
+ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
+OAUTH_TOKEN_ENCRYPTION_KEY=0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d0646e4c133d
+
+**Delivered:**
+- ✅ Diagnose and fix podman-compose log streaming and -f flag issues — Devops Engineer (◈ Standard, 3 SP)
+- ✅ Fix manage.html 'No connectionId in URL' error after successful OAuth flow — Backend Developer (◉ Deep, 5 SP)
+- ✅ Add integration tests for OAuth callback and manage API using real env credentials — Qa Engineer (◉ Deep, 5 SP)
+
+---

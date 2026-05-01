@@ -208,6 +208,9 @@ npm run dev
 
 # Run tests
 npm test
+
+# Run integration tests (OAuth callback + manage endpoint)
+npm run test:integration
 ```
 
 Node.js >= 18 is required.
@@ -228,6 +231,50 @@ Required at startup:
 | `ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth app Client Secret |
 | `ATLASSIAN_REDIRECT_URI` | Registered HTTPS redirect URI — must be `https://` (see `OAUTH_SETUP.md` § 2a) |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` | 64-char hex AES-256-GCM key — generate with `openssl rand -hex 32` |
+
+---
+
+## Testing
+
+### Unit / sprint tests
+
+```bash
+npm test
+```
+
+Runs all test suites in `tests/` (sprint1–sprint10).
+
+### Integration tests
+
+Integration tests cover the full OAuth callback → connection store → manage API flow using
+mocked Atlassian token endpoints and credentials loaded from `.env.test`.
+
+```bash
+# 1. Create the test credentials file (first time only):
+cp .env.example .env.test
+# Then fill in the same credentials you use for development.
+
+# 2. Run integration tests:
+npm run test:integration
+```
+
+The `.env.test` file must contain at minimum:
+
+| Variable | Example |
+|---|---|
+| `ATLASSIAN_CLIENT_ID` | `1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9` |
+| `ATLASSIAN_CLIENT_SECRET` | `ATOA2...` |
+| `ATLASSIAN_REDIRECT_URI` | `https://localhost:4443/oauth/callback` |
+| `OAUTH_TOKEN_ENCRYPTION_KEY` | 64-char hex string |
+
+Atlassian API calls are mocked — no real network requests are made. The tests validate:
+- Successful callback stores an encrypted connection record keyed by `connectionId`
+- Callback response is a `302` redirect to `/callback.html?connectionId=<id>&status=success`
+- `GET /api/v1/integrations/:connectionId` returns `cloudId`, `siteName`, `grantedScopes`
+- Missing `code` param → `302` redirect with `STATE_INVALID`
+- Invalid / tampered state → `302` redirect with `STATE_INVALID`
+
+**In CI:** set the four env vars directly as CI secrets instead of committing `.env.test`.
 
 ---
 

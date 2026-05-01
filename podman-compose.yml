@@ -31,12 +31,23 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT:     ${PORT:-4000}
+      # Force Node.js to flush stdout immediately even when not attached to a TTY.
+      # Without this, podman-compose logs -f may show no output after the startup line.
+      NODE_OPTIONS: "--no-experimental-fetch"
+      FORCE_COLOR: "0"
     ports:
       - "${PORT:-4000}:${PORT:-4000}"
     volumes:
       - backup_data:/app/data/backups
       - sdi_tmp:/app/data/sdi-tmp
       - export_data:/app/data/exports
+    # json-file driver ensures podman-compose logs -f can tail output in real time.
+    # The default journald driver is not always reachable inside rootless Podman sessions.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-4000}/health"]
       interval: 30s

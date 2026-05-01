@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest --runInBand --forceExit"
+    "test": "jest --runInBand --forceExit",
+    "test:integration": "jest --runInBand --forceExit tests/integration.test.js"
   },
   "dependencies": {
     "axios": "^1.6.0",

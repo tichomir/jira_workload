@@ -18,6 +18,12 @@ const app = express();
 
 app.use(express.json());
 
+// HTTP request logger — writes to stdout so podman-compose logs -f streams all traffic
+app.use((req, _res, next) => {
+  process.stdout.write(`${new Date().toISOString()} ${req.method} ${req.url}\n`);
+  next();
+});
+
 // Serve static frontend assets
 app.use(express.static(path.join(__dirname, 'public')));
 

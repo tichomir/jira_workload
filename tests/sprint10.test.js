@@ -131,6 +131,32 @@ describe('TC-1: Happy path — GET /oauth/callback (Atlassian redirect URI alias
     expect(res.headers.location).not.toContain('status=error');
   });
 
+  test('redirect location points to /callback.html (not a non-existent SPA route)', async () => {
+    seedPendingState('happy-state-10-path');
+    mockSuccessfulTokenExchange('cloud-path-check', 'Path Check Site');
+
+    const res = await request(app)
+      .get('/oauth/callback')
+      .query({ code: 'auth-code-path', state: 'happy-state-10-path' })
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    // Must redirect to the static /callback.html page, not an SPA route like /integrations/jira/callback
+    expect(res.headers.location).toMatch(/^\/callback\.html\?/);
+    expect(res.headers.location).not.toContain('/integrations/jira/callback');
+  });
+
+  test('error redirects also point to /callback.html', async () => {
+    const res = await request(app)
+      .get('/oauth/callback')
+      .query({ error: 'access_denied', error_description: 'User denied' })
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/^\/callback\.html\?/);
+    expect(res.headers.location).toContain('status=error');
+  });
+
   test('tokens are stored encrypted (not plaintext) after successful callback', async () => {
     seedPendingState('happy-state-10c');
     mockSuccessfulTokenExchange('cloud-happy-c', 'Happy Site C');
