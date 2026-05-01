@@ -5,6 +5,10 @@
 # Environment secrets — never commit real credentials
 .env
 
+# Local compose overrides — user-specific port/volume/service tweaks
+# Copy podman-compose.override.yml.example to create this file.
+podman-compose.override.yml
+
 # Node.js dependencies
 node_modules/
 

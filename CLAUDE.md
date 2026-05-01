@@ -322,3 +322,27 @@ OAUTH_TOKEN_ENCRYPTION_KEY=0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d
 - ✅ Update DEMO.md and all user-facing documentation to reflect new UI and install flow — Qa Engineer (⚡ Quick, 2 SP)
 
 ---
+### Sprint 13 — Installation & Upgrade Documentation Overhaul | 2026-05-01 | ✅ done | 12 SP
+**Goal:** Optimize all document. There are are at least 2 Installation manuals. 
+You have also added instructions how to upgarde if using podmap... but there are no instructions on how to install from a container registry. I WANT to have two installation methods
+1. When cloning from GIT and Upgrade working - right now the whole thing is complaining whe I try git pull that:
+
+git pull
+Updating d4b4aa3..b0817ff
+error: Your local changes to the following files would be overwritten by merge:
+	podman-compose.yml
+Please commit your changes or stash them before you merge.
+Aborting
+
+
+2. Way to install from a container and upgrade a container for those that do not need development environment. 
+
+Optimize and repair!
+
+**Delivered:**
+- ✅ Audit and consolidate all existing installation documentation — Software Architect (⚡ Quick, 2 SP)
+- ✅ Write INSTALL-GIT.md: Git-based install and upgrade with safe config persistence — Devops Engineer (◉ Deep, 5 SP)
+- ✅ Write INSTALL-CONTAINER.md: container registry install and upgrade (no git required) — Devops Engineer (◈ Standard, 3 SP)
+- ✅ Update README.md to be the single navigation entry point for both install methods — Qa Engineer (⚡ Quick, 2 SP)
+
+---

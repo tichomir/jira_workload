@@ -1,0 +1,74 @@
+version: "3.9"
+
+# =============================================================================
+# podman-compose.override.yml.example
+# =============================================================================
+# This file is the template for YOUR local customisations.
+#
+# HOW TO USE
+# ----------
+# 1. Copy this file:
+#      cp podman-compose.override.yml.example podman-compose.override.yml
+#
+# 2. Uncomment and edit only the sections you need.
+#
+# 3. Start the stack with BOTH files:
+#      podman-compose -f podman-compose.yml -f podman-compose.override.yml up -d
+#
+# WHY THIS EXISTS
+# ---------------
+# podman-compose.yml is tracked in git and must never be edited directly.
+# Editing it causes "Your local changes would be overwritten by merge" errors
+# on every git pull.  Keep ALL your local tweaks in this file instead —
+# it is listed in .gitignore so it is never committed and never conflicts.
+#
+# =============================================================================
+
+
+services:
+  app:
+    # -------------------------------------------------------------------------
+    # Override the port mapping (e.g. if 4000 is already in use)
+    # -------------------------------------------------------------------------
+    # ports:
+    #   - "4001:4000"
+
+    # -------------------------------------------------------------------------
+    # Extra environment variables (supplements, does not replace, .env)
+    # -------------------------------------------------------------------------
+    # environment:
+    #   NODE_ENV: production
+    #   PORT: 4000
+
+    # -------------------------------------------------------------------------
+    # Mount a custom data directory from the host instead of using named volumes
+    # (useful if you want easy access to db.json or want to place data on an
+    # external drive / NFS mount)
+    # -------------------------------------------------------------------------
+    # volumes:
+    #   - /your/custom/data/path:/data
+
+  # ---------------------------------------------------------------------------
+  # Caddy HTTPS sidecar — enables https://localhost:4443 for OAuth callbacks.
+  #
+  # Prerequisites before uncommenting:
+  #   1. Install mkcert:  brew install mkcert  (macOS)
+  #                       sudo apt install mkcert  (Linux)
+  #   2. Install the local CA: mkcert -install
+  #   3. Generate certs:  mkcert localhost 127.0.0.1 ::1
+  #   4. Move certs:      mkdir -p certs && mv localhost+2*.pem certs/
+  #   5. Copy Caddyfile:  cp Caddyfile.example Caddyfile
+  #   6. Set in .env:     ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
+  #
+  # See OAUTH_SETUP.md § 2a Option B for the full guide.
+  # ---------------------------------------------------------------------------
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "4443:4443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./certs:/certs:ro
+  #   depends_on:
+  #     - app
+  #   restart: unless-stopped

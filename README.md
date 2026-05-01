@@ -27,83 +27,45 @@ Atlassian OAuth 2.0 (3LO) and provides:
 
 ---
 
-## Quick Start
+## Choosing your install method
 
-### Prerequisites
+| I want to… | Use this guide |
+|---|---|
+| Just run the app — no source code needed | **[INSTALL-CONTAINER.md](INSTALL-CONTAINER.md)** — pull a pre-built image from a container registry; no git required |
+| Contribute, modify source, or run from git | **[INSTALL-GIT.md](INSTALL-GIT.md)** — clone the repo, use an override file so `git pull` never conflicts with your local settings |
 
-- **Podman** (rootless, no daemon required) + **podman-compose**
-  - macOS: `brew install podman podman-compose && podman machine init && podman machine start`
-  - Fedora/RHEL: `sudo dnf install -y podman podman-compose`
-  - Debian/Ubuntu: `sudo apt-get install -y podman && pip install podman-compose`
-  - Windows: install [Podman Desktop](https://podman-desktop.io) **or** run from a WSL2 terminal with Podman installed
-- An [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/) OAuth 2.0 (3LO) app
+---
 
-### 1. Clone and configure
+## Quick Start — Container (no git required)
+
+Pull the pre-built image, drop in your `.env`, and start. No source code needed.
+See **[INSTALL-CONTAINER.md](INSTALL-CONTAINER.md)** for the full step-by-step guide including
+upgrade, rollback, version pinning, and data backup.
+
+```bash
+mkdir ~/jira-workload && cd ~/jira-workload
+# Download the compose file and env template, fill in .env, then:
+podman-compose up -d
+```
+
+---
+
+## Quick Start — Git (contribute / run from source)
+
+Clone the repo, copy the override template so your local tweaks never block `git pull`,
+fill in `.env`, and start.
+See **[INSTALL-GIT.md](INSTALL-GIT.md)** for the full step-by-step guide including
+upgrade, local customisation, and troubleshooting.
 
 ```bash
 git clone <repository-url>
 cd jira_workload
 cp .env.example .env
+cp podman-compose.override.yml.example podman-compose.override.yml
+# Fill in .env, then:
+./start.sh          # macOS / Linux
+.\start.ps1         # Windows PowerShell
 ```
-
-Open `.env` and fill in:
-
-```
-ATLASSIAN_CLIENT_ID=<your-client-id>
-ATLASSIAN_CLIENT_SECRET=<your-client-secret>
-ATLASSIAN_REDIRECT_URI=https://<your-ngrok-id>.ngrok-free.app/oauth/callback  # must be HTTPS — see OAUTH_SETUP.md § 2a
-OAUTH_TOKEN_ENCRYPTION_KEY=<64-hex-chars>   # openssl rand -hex 32
-```
-
-### 2. Start
-
-| Platform | Command |
-|---|---|
-| macOS / Linux | `./start.sh` |
-| Windows (PowerShell) | `.\start.ps1` |
-| Windows (CMD) | `start.bat` |
-| Manual | `podman-compose -f podman-compose.yml up --build` |
-
-The application starts at **http://localhost:4000**.
-
-### 3. Stop
-
-| Platform | Command |
-|---|---|
-| macOS / Linux | `./stop.sh` |
-| Windows (PowerShell) | `.\stop.ps1` |
-| Windows (CMD) | `stop.bat` |
-
----
-
-## Data Persistence & Upgrades
-
-All user-generated state (OAuth connections, backup metadata) is stored in a
-persistent `db_data` named volume — **outside the application source tree**.
-
-| What | Where |
-|---|---|
-| Connections & tokens | `db_data` volume → `/data/db.json` inside container |
-| Backup binary files | `backup_data` volume |
-| Exports | `export_data` volume |
-
-Named volumes survive `./stop.sh` and `podman-compose down` — your connections and
-settings are **never** affected by pulling new source code or rebuilding the image.
-
-> **For full upgrade instructions** — including how to share the app with others without
-> requiring a `git clone`, how to back up your data volumes before upgrading, and the
-> pre-built image approach — see **[INSTALL.md](INSTALL.md)**.
-
-**Quick upgrade (safe — does not touch your data):**
-
-```bash
-git pull          # pull latest source
-./stop.sh         # stop the stack (volumes are NOT removed)
-./start.sh        # rebuild image and restart
-```
-
-> **Warning:** Never run `podman-compose down -v` — the `-v` flag removes named volumes
-> and permanently deletes your connections and backup data.
 
 ---
 
@@ -114,118 +76,23 @@ what the restore pipeline does, how Podman fits in, and what "purge-protected" m
 
 **[Read the Architecture Overview →](docs/ARCHITECTURE.md)**
 
-It covers:
-- What the platform does and why
-- How the major components interact (OAuth, backup engine, restore engine, SDI, Resilience Module)
-- End-to-end data flow diagrams (backup and restore paths)
-- Key concepts: backup points, conflict modes, purge cascade boundary, protected objects
-- Deployment topology: what runs locally in Podman vs. what is in Atlassian cloud
-
----
-
-## Atlassian App Registration & OAuth Setup
-
-Before you can click **Connect to Atlassian**, you must register an OAuth 2.0 (3LO) app
-in the Atlassian Developer Console and configure an **HTTPS** redirect URI.
-
-### Why HTTPS?
-
-Atlassian's OAuth 2.0 platform rejects all non-HTTPS callback URLs — including
-`http://localhost`. Using an `http://` redirect URI produces this error at connect time:
-
-```
-Redirect URI must be a valid HTTPS URL
-```
-
-This is enforced at both the Developer Console (the form will not save an `http://` URL)
-and at the Atlassian authorization server at runtime.
-
-### Step-by-step: register your app
-
-1. Go to [developer.atlassian.com/console/myapps/](https://developer.atlassian.com/console/myapps/)
-2. Click **Create** → **OAuth 2.0 integration** → enter a name (e.g. `jira-workload-local`) → **Create**
-3. Open the **Authorization** tab → **OAuth 2.0 (3LO)** → **Add** next to **Callback URL**
-4. Enter your HTTPS redirect URI (see options below) and click **Save changes**
-5. Open the **Permissions** tab → add the required Jira scopes (see `OAUTH_SETUP.md §3`)
-6. Open the **Settings** tab → copy **Client ID** and **Client Secret** into `.env`
-
-### Choosing a local HTTPS redirect URI
-
-**Option A — ngrok (recommended, quickest)**
-
-```bash
-# 1. Install ngrok and authenticate
-brew install ngrok           # macOS
-ngrok config add-authtoken <your-ngrok-token>
-
-# 2. Start the app stack, then in a second terminal:
-ngrok http 4000
-# → shows: https://abc123.ngrok-free.app -> http://localhost:4000
-```
-
-Redirect URI to register in the Atlassian Developer Console:
-
-```
-https://abc123.ngrok-free.app/oauth/callback
-```
-
-Set in `.env`:
-
-```dotenv
-ATLASSIAN_REDIRECT_URI=https://abc123.ngrok-free.app/oauth/callback
-```
-
-**Option B — Caddy + mkcert (offline / stable URL)**
-
-Redirect URI to register in the Atlassian Developer Console:
-
-```
-https://localhost:4443/oauth/callback
-```
-
-Set in `.env`:
-
-```dotenv
-ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
-```
-
-See **[OAUTH_SETUP.md](OAUTH_SETUP.md)** for full step-by-step instructions for both options,
-including Windows instructions and the Caddy Podman Compose snippet.
-
-### Connection flows
-
-| Flow | How to use |
-|---|---|
-| **Express path** | Click **Connect with Atlassian** on `/connect.html` — you are redirected to Atlassian to authorise, then returned to the callback URL automatically |
-| **Manual path** | Enter Client ID, Client Secret, Site URL, and the Redirect URI directly in the form on `/connect.html` |
-
-Both flows require the redirect URI in `.env` to **exactly match** the one registered in
-the Atlassian Developer Console — including path, no trailing slash.
-
-### Troubleshooting
-
-| Error | Cause | Fix |
-|---|---|---|
-| `Redirect URI must be a valid HTTPS URL` | `ATLASSIAN_REDIRECT_URI` starts with `http://` | Use an ngrok or Caddy HTTPS URL — see OAUTH_SETUP.md §2a |
-| `redirect_uri_mismatch` | URI in `.env` does not exactly match the one in the Atlassian Console | Copy the URI character-for-character; check for trailing slashes |
-| App not saved in Developer Console | You tried to enter an `http://` callback — the Console rejects it silently or shows an inline error | Enter an `https://` URL |
-
 ---
 
 ## Documentation
 
 | Document | Description |
 |---|---|
+| [INSTALL-GIT.md](INSTALL-GIT.md) | Git-based install, upgrade without merge conflicts, local customisation |
+| [INSTALL-CONTAINER.md](INSTALL-CONTAINER.md) | Container registry install (no git), upgrade, rollback, version pinning |
+| [OAUTH_SETUP.md](OAUTH_SETUP.md) | Atlassian OAuth app registration, HTTPS redirect URI setup (ngrok / Caddy), scope list |
 | [Architecture Overview](docs/ARCHITECTURE.md) | How it works: components, data flows, key concepts, deployment |
-| [Installation Guide](docs/INSTALLATION.md) | Detailed setup for all platforms |
 | [User Guide](docs/USER_GUIDE.md) | How to use every feature |
 | [Demo Walkthrough](docs/DEMO.md) | Step-by-step demo with sample payloads |
-| [OAuth Setup](OAUTH_SETUP.md) | Atlassian OAuth configuration reference |
 | [Architecture ADRs](docs/architecture/) | Per-sprint architecture decision records |
 
 ---
 
-## Development (without Podman / local Node.js)
+## Development (local Node.js without containers)
 
 ```bash
 # Install dependencies
@@ -248,75 +115,11 @@ Node.js >= 18 is required.
 
 ---
 
-## Environment Variables
-
-See [`.env.example`](.env.example) for the full list with descriptions.
-See [`config/deployment.env.example`](config/deployment.env.example) for
-detailed documentation including platform-specific notes.
-
-Required at startup:
-
-| Variable | Description |
-|---|---|
-| `ATLASSIAN_CLIENT_ID` | Atlassian OAuth app Client ID |
-| `ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth app Client Secret |
-| `ATLASSIAN_REDIRECT_URI` | Registered HTTPS redirect URI — must be `https://` (see `OAUTH_SETUP.md` § 2a) |
-| `OAUTH_TOKEN_ENCRYPTION_KEY` | 64-char hex AES-256-GCM key — generate with `openssl rand -hex 32` |
-
----
-
-## Testing
-
-### Unit / sprint tests
-
-```bash
-npm test
-```
-
-Runs all test suites in `tests/` (sprint1–sprint10).
-
-### Integration tests
-
-Integration tests cover the full OAuth callback → connection store → manage API flow using
-mocked Atlassian token endpoints and credentials loaded from `.env.test`.
-
-```bash
-# 1. Create the test credentials file (first time only):
-cp .env.example .env.test
-# Then fill in the same credentials you use for development.
-
-# 2. Run integration tests:
-npm run test:integration
-```
-
-The `.env.test` file must contain at minimum:
-
-| Variable | Example |
-|---|---|
-| `ATLASSIAN_CLIENT_ID` | `1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9` |
-| `ATLASSIAN_CLIENT_SECRET` | `ATOA2...` |
-| `ATLASSIAN_REDIRECT_URI` | `https://localhost:4443/oauth/callback` |
-| `OAUTH_TOKEN_ENCRYPTION_KEY` | 64-char hex string |
-
-Atlassian API calls are mocked — no real network requests are made. The tests validate:
-- Successful callback stores an encrypted connection record keyed by `connectionId`
-- Callback response is a `302` redirect to `/callback.html?connectionId=<id>&status=success`
-- `GET /api/v1/integrations/:connectionId` returns `cloudId`, `siteName`, `grantedScopes`
-- Missing `code` param → `302` redirect with `STATE_INVALID`
-- Invalid / tampered state → `302` redirect with `STATE_INVALID`
-
-**In CI:** set the four env vars directly as CI secrets instead of committing `.env.test`.
-
----
-
 ## Health Check
 
 ```bash
 curl http://localhost:4000/health
 # {"status":"ok"}
-
-# Full health report
-./healthcheck.sh
 ```
 
 ---
@@ -330,11 +133,11 @@ src/
   config/         Environment constants and feature registries
   routes/         Express route handlers (oauth, backup, search, restore, sdi, resilience)
   services/       Business logic (backup engine, restore orchestrator, SDI scanner, etc.)
-  db/             In-memory data store (production DB reserved via DATABASE_URL)
+  db/             In-memory data store
   public/         Static frontend HTML pages
 docs/
   architecture/   Per-sprint architecture decision records
-  INSTALLATION.md Detailed installation guide
+  INSTALLATION.md Detailed installation guide (legacy — see INSTALL-GIT.md / INSTALL-CONTAINER.md)
   USER_GUIDE.md   Feature usage guide
   DEMO.md         Demo walkthrough
 config/
