@@ -1,20 +1,46 @@
 version: "3.9"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# jira_workload — local Docker Compose stack
+#
+# Quick start:
+#   macOS / Linux:  ./start.sh
+#   Windows:        .\start.ps1  (or start.bat)
+#
+# Manual start:
+#   cp config/deployment.env.example .env   # then fill in credentials
+#   docker compose up --build
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  oauth-service:
-    build: .
+  app:
+    build:
+      context: .
+    image: jira-workload:latest
     env_file:
       - .env
     environment:
-      ATLASSIAN_CLIENT_ID: ${ATLASSIAN_CLIENT_ID}
-      ATLASSIAN_CLIENT_SECRET: ${ATLASSIAN_CLIENT_SECRET}
-      ATLASSIAN_REDIRECT_URI: ${ATLASSIAN_REDIRECT_URI}
-      ATLASSIAN_AUTH_URL: ${ATLASSIAN_AUTH_URL}
-      ATLASSIAN_TOKEN_URL: ${ATLASSIAN_TOKEN_URL}
-      ATLASSIAN_RESOURCES_URL: ${ATLASSIAN_RESOURCES_URL}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
-      SOFT_DELETE_RETENTION_DAYS: ${SOFT_DELETE_RETENTION_DAYS}
-      REFRESH_TOKEN_EXPIRY_WARN_DAYS: ${REFRESH_TOKEN_EXPIRY_WARN_DAYS}
-      REFRESH_TOKEN_INACTIVITY_THRESHOLD_DAYS: ${REFRESH_TOKEN_INACTIVITY_THRESHOLD_DAYS}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT:     ${PORT:-4000}
     ports:
-      - "3000:3000"
+      - "${PORT:-4000}:${PORT:-4000}"
+    volumes:
+      - backup_data:/app/data/backups
+      - sdi_tmp:/app/data/sdi-tmp
+      - export_data:/app/data/exports
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-4000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+# ─── Named volumes (persisted across container restarts) ──────────────────────
+volumes:
+  backup_data:
+    driver: local
+  sdi_tmp:
+    driver: local
+  export_data:
+    driver: local

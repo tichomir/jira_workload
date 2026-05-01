@@ -226,3 +226,14 @@ Deliverables:
 - ✅ QA: Resilience Module sidebar, inventory grid, and purge cascade boundary — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 7 | 2026-05-01 | ✅ done | 18 SP
+**Goal:** * Make sure the end product can be deployed locally on any mac, linux or windows system
+* Create official documentation for the project - README, DEMO, Installation guide, user guide.
+
+**Delivered:**
+- ✅ Define cross-platform environment config and deployment constants — Devops Engineer (⚡ Quick, 2 SP)
+- ✅ Implement cross-platform local deployment setup (Docker Compose + startup scripts) — Devops Engineer (◉ Deep, 8 SP)
+- ✅ Write README, Installation Guide, and User Guide — Software Architect (◉ Deep, 5 SP)
+- ✅ Produce DEMO script and record demo assets — Frontend Developer (◈ Standard, 3 SP)
+
+---
