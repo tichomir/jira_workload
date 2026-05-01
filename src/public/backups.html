@@ -71,15 +71,58 @@
     <button class="banner-close" onclick="hideRestoreBanner()">×</button>
   </div>
 
-  <!-- Active backup job status -->
-  <div id="job-status-card" class="card hidden">
-    <div class="flex items-center gap-8">
-      <div class="spinner"></div>
-      <div>
-        <div style="font-weight:600">Backup in progress</div>
-        <div class="text-muted text-sm" id="job-status-msg">Backup job running…</div>
+  <!-- Live job progress panel (backup & restore share same structure) -->
+  <div id="job-progress-panel" class="card hidden" style="border-left:4px solid var(--primary)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="spinner"></div>
+        <div>
+          <div style="font-weight:700;font-size:15px" id="job-panel-title">Backup in progress</div>
+          <div class="text-muted text-sm" id="job-panel-subtitle"></div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--primary)" id="job-elapsed">0:00</div>
+        <div class="text-muted" style="font-size:11px">elapsed</div>
       </div>
     </div>
+
+    <!-- Phase stepper -->
+    <div id="job-phase-stepper" style="margin-bottom:14px;overflow-x:auto;padding-bottom:4px">
+      <!-- rendered by JS -->
+    </div>
+
+    <!-- Issue progress bar (visible only during ISSUE_FETCH) -->
+    <div id="job-issue-bar-wrap" style="display:none;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:600;color:var(--text-muted)">Issues processed</span>
+        <span style="font-size:12px;font-weight:700;font-variant-numeric:tabular-nums" id="job-issue-counts">0 / 0</span>
+      </div>
+      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div id="job-issue-bar" style="height:100%;background:var(--primary);border-radius:4px;transition:width .4s ease;width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:600">API calls</span>
+        <span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)" id="job-api-count">0</span>
+      </div>
+      <div id="job-error-badge-wrap" style="display:none;align-items:center;gap:6px">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--amber);font-weight:600">Errors</span>
+        <span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--amber);background:var(--amber-bg);padding:1px 8px;border-radius:10px" id="job-error-count">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:600">Phase</span>
+        <span style="font-size:13px;font-weight:600;color:var(--primary)" id="job-current-phase-label">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Job summary card (shown on terminal state) -->
+  <div id="job-summary-card" class="card hidden">
+    <!-- rendered by JS -->
   </div>
 
   <!-- Backup history -->
@@ -123,12 +166,171 @@ let _connectionId = null;
 let _restoreBackupPointId = null;
 let _pollInterval = null;
 let _restorePollInterval = null;
+let _elapsedTimer = null;
+let _jobStartMs = null;
 
 function qs(id) { return document.getElementById(id); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+// ── Phase ordering and labels ──────────────────────────────────────────────
+const PHASE_ORDER = [
+  'INIT', 'PROJECT_DISCOVERY', 'ISSUE_FETCH', 'ATTACHMENT_DOWNLOAD',
+  'WORKFLOW_ENUM', 'CUSTOM_FIELD_ENUM', 'MANIFEST_WRITE', 'FINALIZING',
+];
+const PHASE_LABELS = {
+  INIT: 'Init',
+  PROJECT_DISCOVERY: 'Projects',
+  ISSUE_FETCH: 'Issues',
+  ATTACHMENT_DOWNLOAD: 'Attachments',
+  WORKFLOW_ENUM: 'Workflows',
+  CUSTOM_FIELD_ENUM: 'Custom Fields',
+  MANIFEST_WRITE: 'Manifest',
+  FINALIZING: 'Finalizing',
+};
+
+function fmtPhaseLabel(phase) {
+  return PHASE_LABELS[phase] || (phase ? phase.replace(/_/g, ' ') : '—');
+}
+
+function fmtElapsed(startMs) {
+  if (!startMs) return '0:00';
+  const totalSec = Math.floor((Date.now() - startMs) / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function renderPhaseStepper(currentPhase) {
+  const currentIdx = PHASE_ORDER.indexOf(currentPhase);
+  const steps = PHASE_ORDER.map((phase, idx) => {
+    let color, bg, border;
+    if (idx < currentIdx) {
+      color = 'var(--success)'; bg = 'var(--success-bg)'; border = 'var(--success)';
+    } else if (idx === currentIdx) {
+      color = '#fff'; bg = 'var(--primary)'; border = 'var(--primary)';
+    } else {
+      color = 'var(--text-muted)'; bg = 'var(--bg)'; border = 'var(--border)';
+    }
+    const label = idx < currentIdx ? '✓' : String(idx + 1);
+    return `<span title="${escHtml(phase)}" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;font-weight:${idx === currentIdx ? 700 : 500};color:${color === '#fff' ? 'var(--primary)' : color}">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${bg};border:1.5px solid ${border};font-size:10px;font-weight:700;color:${color}">${label}</span>
+      <span style="color:${idx === currentIdx ? 'var(--primary)' : idx < currentIdx ? 'var(--success)' : 'var(--text-muted)'}">${escHtml(PHASE_LABELS[phase] || phase)}</span>
+    </span>`;
+  });
+  return `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${
+    steps.map((s, i) => i < steps.length - 1 ? s + '<span style="color:var(--border);font-size:10px;flex-shrink:0">›</span>' : s).join('')
+  }</div>`;
+}
+
+// ── Start / stop elapsed timer ─────────────────────────────────────────────
+function startElapsedTimer(startMs) {
+  _jobStartMs = startMs;
+  stopElapsedTimer();
+  _elapsedTimer = setInterval(() => {
+    const el = qs('job-elapsed');
+    if (el) el.textContent = fmtElapsed(_jobStartMs);
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
+
+// ── Show progress panel ────────────────────────────────────────────────────
+function showProgressPanel(jobId, triggeredAt, isRestore) {
+  const panel = qs('job-progress-panel');
+  qs('job-summary-card').classList.add('hidden');
+  qs('job-panel-title').textContent = isRestore ? 'Restore in progress' : 'Backup in progress';
+  qs('job-panel-subtitle').textContent = `Job ${jobId}`;
+  qs('job-elapsed').textContent = '0:00';
+  qs('job-phase-stepper').innerHTML = renderPhaseStepper('INIT');
+  qs('job-issue-bar-wrap').style.display = 'none';
+  qs('job-api-count').textContent = '0';
+  qs('job-error-badge-wrap').style.display = 'none';
+  qs('job-current-phase-label').textContent = 'Init';
+  panel.classList.remove('hidden');
+  startElapsedTimer(triggeredAt ? new Date(triggeredAt).getTime() : Date.now());
+}
+
+// ── Update progress panel from progress snapshot ───────────────────────────
+function updateProgressPanel(progress) {
+  if (!progress) return;
+  const phase = progress.phase || 'INIT';
+  qs('job-phase-stepper').innerHTML = renderPhaseStepper(phase);
+  qs('job-current-phase-label').textContent = fmtPhaseLabel(phase);
+
+  // Issue progress bar
+  if (phase === 'ISSUE_FETCH' && progress.total > 0) {
+    qs('job-issue-bar-wrap').style.display = '';
+    const pct = Math.min(100, Math.round((progress.processed / progress.total) * 100));
+    qs('job-issue-counts').textContent = `${progress.processed || 0} / ${progress.total}`;
+    qs('job-issue-bar').style.width = `${pct}%`;
+  } else {
+    qs('job-issue-bar-wrap').style.display = 'none';
+  }
+
+  // API call counter
+  qs('job-api-count').textContent = progress.apiCallCount || 0;
+
+  // Error badge
+  if (progress.errorCount > 0) {
+    qs('job-error-badge-wrap').style.display = 'flex';
+    qs('job-error-count').textContent = progress.errorCount;
+  } else {
+    qs('job-error-badge-wrap').style.display = 'none';
+  }
+}
+
+// ── Show summary card on terminal state ────────────────────────────────────
+function showJobSummaryCard(job, progress, isRestore) {
+  stopElapsedTimer();
+  qs('job-progress-panel').classList.add('hidden');
+  const card = qs('job-summary-card');
+  const succeeded = job.status === 'completed' || job.status === 'complete';
+  const icon = succeeded ? '✔' : '✖';
+  const color = succeeded ? 'var(--success)' : 'var(--danger)';
+  const bg = succeeded ? 'var(--success-bg)' : 'var(--danger-bg)';
+  const typeLabel = isRestore ? 'Restore' : 'Backup';
+
+  let detailHtml = '';
+  if (succeeded && !isRestore && job.objectCounts) {
+    const counts = job.objectCounts;
+    detailHtml = '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px">' +
+      Object.entries(counts).filter(([,v]) => v > 0).map(([k,v]) =>
+        `<span style="font-size:12px;color:var(--text-muted)">${escHtml(k)}: <strong>${v}</strong></span>`
+      ).join('') + '</div>';
+  }
+  if (succeeded && isRestore && job.result) {
+    const r = job.result;
+    detailHtml = `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px">
+      <span style="font-size:12px;color:var(--text-muted)">Restored: <strong>${r.restoredCount || 0}</strong></span>
+      <span style="font-size:12px;color:var(--text-muted)">Skipped: <strong>${r.skippedCount || 0}</strong></span>
+      <span style="font-size:12px;color:var(--text-muted)">Failed: <strong>${r.failedCount || 0}</strong></span>
+    </div>`;
+  }
+  if (progress) {
+    detailHtml += `<div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text-muted)">API calls: <strong>${progress.apiCallCount || 0}</strong></span>
+      ${progress.errorCount > 0 ? `<span style="font-size:12px;color:var(--amber)">Errors: <strong>${progress.errorCount}</strong></span>` : ''}
+    </div>`;
+  }
+
+  card.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;padding:4px 0">
+    <span style="font-size:24px;color:${color};background:${bg};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon}</span>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:15px;color:${color}">${typeLabel} ${succeeded ? 'completed' : 'failed'}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job ${job.jobId || job.id || ''} · ${fmtDate(job.completedAt)}</div>
+      ${job.error && !succeeded ? `<div style="margin-top:6px;font-size:13px;color:var(--danger)">${escHtml(job.error)}</div>` : ''}
+      ${detailHtml}
+    </div>
+  </div>`;
+  card.classList.remove('hidden');
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -262,15 +464,14 @@ async function triggerBackup() {
   btn.disabled = true;
   btn.textContent = 'Triggering…';
   hideTriggerBanner();
+  qs('job-summary-card').classList.add('hidden');
 
   try {
     const res = await fetch(`/api/connections/${_connectionId}/backup`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Backup trigger failed');
 
-    showTriggerBanner('success', 'Backup triggered', `Job ID: ${data.jobId} — status: ${data.status}`);
-    qs('job-status-card').classList.remove('hidden');
-    qs('job-status-msg').textContent = `Job ${data.jobId} is running…`;
+    showProgressPanel(data.jobId, data.triggeredAt, false);
     pollJob(data.jobId);
   } catch (e) {
     showTriggerBanner('error', 'Backup trigger failed', e.message);
@@ -280,26 +481,29 @@ async function triggerBackup() {
   }
 }
 
+let _lastProgress = null;
+
 function pollJob(jobId) {
   if (_pollInterval) clearInterval(_pollInterval);
   _pollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`${API}/integrations/${_connectionId}/backup/${jobId}`);
-      const job = await res.json();
+      const [jobRes, progressRes] = await Promise.all([
+        fetch(`${API}/integrations/${_connectionId}/backup/${jobId}`),
+        fetch(`${API}/jobs/${jobId}/progress`).catch(() => null),
+      ]);
+      const job = await jobRes.json();
+      const progress = progressRes && progressRes.ok ? await progressRes.json() : null;
+      if (progress) { _lastProgress = progress; updateProgressPanel(progress); }
+
       if (job.status === 'completed' || job.status === 'failed' || job.status === 'auth_error') {
         clearInterval(_pollInterval);
         _pollInterval = null;
-        qs('job-status-card').classList.add('hidden');
-        if (job.status === 'completed') {
-          showTriggerBanner('success', 'Backup completed', `Job ${jobId} completed at ${fmtDate(job.completedAt)}`);
-        } else if (job.status === 'auth_error') {
+        showJobSummaryCard(job, _lastProgress, false);
+        _lastProgress = null;
+        if (job.status === 'auth_error') {
           showTriggerBanner('error', 'Authentication error', job.error || 'Token expired. Please reconnect the integration from the Integrations page.');
-        } else {
-          showTriggerBanner('error', 'Backup failed', job.error || 'Unknown error');
         }
         await loadBackups();
-      } else {
-        qs('job-status-msg').textContent = `Job ${jobId} running… (started ${fmtDate(job.triggeredAt)})`;
       }
     } catch (_) { /* ignore poll errors */ }
   }, 3000);
@@ -345,8 +549,8 @@ async function executeRestore() {
     if (!res.ok) throw new Error(data.message || 'Restore failed');
 
     closeRestoreModal();
-    showRestoreBanner('info', 'Restore in progress',
-      `Job ${data.jobId} started. Waiting for completion…`);
+    qs('job-summary-card').classList.add('hidden');
+    showProgressPanel(data.jobId, data.triggeredAt, true);
     pollRestoreJob(data.jobId);
   } catch (e) {
     closeRestoreModal();
@@ -357,41 +561,33 @@ async function executeRestore() {
   }
 }
 
+let _lastRestoreProgress = null;
+
 function pollRestoreJob(jobId) {
   if (_restorePollInterval) clearInterval(_restorePollInterval);
   _restorePollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`${API}/integrations/${_connectionId}/restore-backup/${jobId}`);
-      const job = await res.json();
-      if (job.status === 'complete' || job.status === 'failed' || job.status === 'running' && job.completedAt) {
+      const [jobRes, progressRes] = await Promise.all([
+        fetch(`${API}/integrations/${_connectionId}/restore-backup/${jobId}`),
+        fetch(`${API}/jobs/${jobId}/progress`).catch(() => null),
+      ]);
+      const job = await jobRes.json();
+      const progress = progressRes && progressRes.ok ? await progressRes.json() : null;
+      if (progress) { _lastRestoreProgress = progress; updateProgressPanel(progress); }
+
+      const isDone = job.status === 'complete' || job.status === 'failed' ||
+        (job.status === 'running' && job.completedAt);
+      if (isDone) {
         clearInterval(_restorePollInterval);
         _restorePollInterval = null;
-        if (job.status === 'complete') {
-          const summary = formatRestoreSummary(job);
-          showRestoreBanner('success', 'Restore completed', summary);
-        } else {
+        showJobSummaryCard(job, _lastRestoreProgress, true);
+        _lastRestoreProgress = null;
+        if (job.status !== 'complete') {
           showRestoreBanner('error', 'Restore failed', job.error || `Job ended with status: ${job.status}`);
         }
       }
     } catch (_) { /* ignore poll errors */ }
-  }, 2000);
-}
-
-function formatRestoreSummary(job) {
-  const parts = [];
-  if (job.restoredCount !== undefined) parts.push(`Restored: ${job.restoredCount}`);
-  if (job.skippedCount !== undefined) parts.push(`Skipped: ${job.skippedCount}`);
-  if (job.failedCount !== undefined) parts.push(`Failed: ${job.failedCount}`);
-  if (parts.length === 0) return 'Restore job complete.';
-  let msg = parts.join(' · ');
-  if (job.byType && Object.keys(job.byType).length > 0) {
-    const typeLines = Object.entries(job.byType)
-      .filter(([, c]) => c.restored > 0 || c.failed > 0)
-      .map(([t, c]) => `${t}: ${c.restored} restored${c.failed ? ', ' + c.failed + ' failed' : ''}`)
-      .join('; ');
-    if (typeLines) msg += ` (${typeLines})`;
-  }
-  return msg;
+  }, 3000);
 }
 
 function showRestoreBanner(type, title, msg) {
@@ -404,6 +600,13 @@ function showRestoreBanner(type, title, msg) {
   banner.classList.remove('hidden');
 }
 function hideRestoreBanner() { qs('banner-restore').classList.add('hidden'); }
+
+// Stop all polling and timers on page unload to prevent memory leaks
+window.addEventListener('beforeunload', () => {
+  if (_pollInterval) clearInterval(_pollInterval);
+  if (_restorePollInterval) clearInterval(_restorePollInterval);
+  stopElapsedTimer();
+});
 </script>
 </body>
 </html>

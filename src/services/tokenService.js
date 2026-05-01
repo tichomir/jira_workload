@@ -72,7 +72,7 @@ async function refreshConnectionToken(connectionId) {
         client_id: clientId,
         client_secret: clientSecret,
         refresh_token: refreshToken,
-      });
+      }, { timeout: 15000 });
       tokenData = response.data;
     } catch (err) {
       const status = err.response && err.response.status;
@@ -164,15 +164,27 @@ async function getValidAccessToken(connectionId) {
  *
  * @param {string} connectionId
  * @param {string} initialAccessToken  Already-decrypted token to start with
+ * @param {string|null} [jobId]        Optional — when provided, increments apiCallCount on every request
  * @returns {import('axios').AxiosInstance}
  */
-function createJiraAxiosInstance(connectionId, initialAccessToken) {
+function createJiraAxiosInstance(connectionId, initialAccessToken, jobId = null) {
   const instance = axios.create({
+    timeout: 30000, // 30-second per-request timeout — prevents indefinite hangs
     headers: {
       Authorization: `Bearer ${initialAccessToken}`,
       Accept: 'application/json',
     },
   });
+
+  // Request interceptor: increment the per-job API call counter for progress tracking.
+  if (jobId) {
+    // Lazy require to avoid load-order issues (jobProgress → db, no cycle with tokenService).
+    const { incrementApiCallCount } = require('./jobProgress');
+    instance.interceptors.request.use((config) => {
+      incrementApiCallCount(jobId);
+      return config;
+    });
+  }
 
   instance.interceptors.response.use(
     null,
@@ -238,6 +250,7 @@ async function verifyAndRefreshCloudId(connectionId) {
   let sites;
   try {
     const response = await axios.get(ATLASSIAN_RESOURCES_URL, {
+      timeout: 15000,
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     });
     sites = response.data;

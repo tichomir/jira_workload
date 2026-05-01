@@ -3,6 +3,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { getValidAccessToken, createJiraAxiosInstance, verifyAndRefreshCloudId } = require('./tokenService');
+const { PHASES, emitProgress } = require('./jobProgress');
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const { runJqlEnumeration } = require('./jqlEnumeration');
@@ -19,9 +20,10 @@ const { tagIssueNodes } = require('./archiveScope');
  * @param {string} cloudId
  * @param {string} projectKey
  * @param {import('axios').AxiosInstance} jiraAxios  Shared Axios instance with 401 interceptor
+ * @param {string|null} [jobId]  Optional — for progress tracking
  * @returns {Promise<{issues: object[], mode: string, runState: object, attachmentEntries: object[]}>}
  */
-async function runProjectBackup(integrationId, cloudId, projectKey, jiraAxios) {
+async function runProjectBackup(integrationId, cloudId, projectKey, jiraAxios, jobId = null) {
   const backupPointId = uuidv4();
 
   // JQL enumeration (full or incremental)
@@ -29,16 +31,19 @@ async function runProjectBackup(integrationId, cloudId, projectKey, jiraAxios) {
     integrationId,
     cloudId,
     projectKey,
-    jiraAxios
+    jiraAxios,
+    jobId
   );
 
   // Attachment materialisation
+  emitProgress(jobId, { phase: PHASES.ATTACHMENT_DOWNLOAD, objectType: 'JiraAttachment', objectKey: projectKey, processed: 0, total: 0 });
   const attachmentEntries = await processAttachments(
     integrationId,
     backupPointId,
     issues,
     cloudId,
-    jiraAxios
+    jiraAxios,
+    jobId
   );
 
   // Archive scope attribute tagging
@@ -56,26 +61,48 @@ async function runProjectBackup(integrationId, cloudId, projectKey, jiraAxios) {
  * 5. Run site-level enumeration (workflows, custom fields, contexts).
  *
  * @param {string} integrationId
+ * @param {string} [jobId]  Optional — when provided, updates db.backupJobs with current phase
  * @returns {Promise<object>}
  */
-async function runIntegrationBackup(integrationId) {
+async function runIntegrationBackup(integrationId, jobId) {
+  // Initialise progress snapshot immediately so the endpoint returns data from the first poll.
+  emitProgress(jobId, { phase: PHASES.INIT, processed: 0, total: 0, apiCallCount: 0, errorCount: 0 });
+
+  // Helper: update both the job record's phase and the progress snapshot.
+  function updatePhase(phase) {
+    if (!jobId) return;
+    const job = db.backupJobs.get(jobId);
+    if (job) {
+      job.phase = phase;
+      db.backupJobs.set(jobId, job);
+    }
+    emitProgress(jobId, { phase });
+  }
+
   const connection = db.connections.get(integrationId);
   if (!connection) {
     throw new Error(`Connection not found: ${integrationId}`);
   }
 
+  console.info(`[backup] starting: integrationId=${integrationId} jobId=${jobId || 'n/a'}`);
+
   // CloudId freshness check: verify against Atlassian accessible-resources if not checked
   // within the last 24 hours. This catches stale cloudIds (e.g. after site migration) before
   // they cause mid-backup failures. The call is skipped when cloudIdVerifiedAt is recent.
+  updatePhase(PHASES.INIT);
+  console.info(`[backup] phase=verifying_cloud_id integrationId=${integrationId}`);
   const cloudId = await verifyAndRefreshCloudId(integrationId);
 
   // Proactive token check: refresh if expiring within 5 minutes.
   // createJiraAxiosInstance uses the fresh token and attaches a 401 interceptor
   // that will transparently refresh and retry if the token expires mid-run.
+  // Pass jobId so the request interceptor tracks outbound API calls.
+  console.info(`[backup] phase=refreshing_token integrationId=${integrationId}`);
   const accessToken = await getValidAccessToken(integrationId);
-  const jiraAxios = createJiraAxiosInstance(integrationId, accessToken);
+  const jiraAxios = createJiraAxiosInstance(integrationId, accessToken, jobId);
 
   // 1. Ensure webhook is registered (requires manage:jira-webhook scope)
+  console.info(`[backup] phase=webhook_registration integrationId=${integrationId}`);
   const hasWebhookScope = connection.grantedScopes &&
     connection.grantedScopes.includes('manage:jira-webhook');
 
@@ -86,6 +113,8 @@ async function runIntegrationBackup(integrationId) {
   }
 
   // 2. Determine project keys to back up
+  updatePhase(PHASES.PROJECT_DISCOVERY);
+  console.info(`[backup] phase=enumerating_projects integrationId=${integrationId}`);
   let projectKeys = [];
   if (connection.projectScopeMode === 'selected' && connection.selectedProjectIds && connection.selectedProjectIds.length > 0) {
     projectKeys = connection.selectedProjectIds;
@@ -128,15 +157,23 @@ async function runIntegrationBackup(integrationId) {
     }
   }
 
+  emitProgress(jobId, { objectType: 'JiraProjectNode', total: projectKeys.length, processed: 0 });
+
   // 3. Run per-project backup
   const projectResults = [];
   for (const projectKey of projectKeys) {
-    const result = await runProjectBackup(integrationId, cloudId, projectKey, jiraAxios);
+    updatePhase(PHASES.ISSUE_FETCH);
+    console.info(`[backup] phase=backup_project integrationId=${integrationId} projectKey=${projectKey}`);
+    emitProgress(jobId, { phase: PHASES.ISSUE_FETCH, objectType: 'JiraProjectNode', objectKey: projectKey });
+    const result = await runProjectBackup(integrationId, cloudId, projectKey, jiraAxios, jobId);
     projectResults.push({ projectKey, ...result });
+    emitProgress(jobId, { processed: projectResults.length, total: projectKeys.length });
   }
 
   // 4. Site-level enumeration (runs regardless of project scope)
-  const siteEnumResult = await runSiteEnumeration(cloudId, jiraAxios);
+  updatePhase(PHASES.WORKFLOW_ENUM);
+  console.info(`[backup] phase=site_enumeration integrationId=${integrationId}`);
+  const siteEnumResult = await runSiteEnumeration(cloudId, jiraAxios, jobId);
 
   // Update lastSyncedAt on connection
   const now = new Date().toISOString();
@@ -202,8 +239,13 @@ async function runIntegrationBackup(integrationId) {
     });
   }
 
+  updatePhase(PHASES.MANIFEST_WRITE);
+  console.info(`[backup] phase=persisting integrationId=${integrationId}`);
   db.saveDb();
   console.info(`[backup] Backup record persisted: jobId=${backupPointId} connectionId=${integrationId}`);
+
+  updatePhase(PHASES.FINALIZING);
+  console.info(`[backup] phase=finalizing integrationId=${integrationId}`);
 
   return {
     integrationId,

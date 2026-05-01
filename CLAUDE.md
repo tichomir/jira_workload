@@ -2809,3 +2809,26 @@ It never finishes and I don't think it does something. this needs to be investig
 **Delivered:**
 
 ---
+### Sprint 16 — Backup Job Hang Fix + Progress Visibility | 2026-05-01 | ✅ done | 30 SP
+**Goal:** It doesn't work. 
+
+I run a bakcup job and it just continues forever: 
+Backup in progress
+Job 68395a23-c315-4022-a748-1c692a159772 running… (started May 1, 2026, 6:58 PM)
+
+Check it. 
+We need a better way to see what's happening during backup and restore, e.g. if there are actually objects processed. If the API calls are actually happening etc... 
+
+Make a plan, fix this as I'm tired of you not being able to do stuff !!!
+
+**Delivered:**
+- ✅ Diagnose and root-cause the hanging backup job — Software Architect (◉ Deep, 5 SP)
+- ✅ Add job progress tracking — backend progress emission — Backend Developer (◉ Deep, 5 SP)
+- ✅ Add job progress panel to backup/restore UI — Frontend Developer (◉ Deep, 5 SP)
+- ✅ Add job timeout guard and dead-job recovery — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: pre-existing test failure caused by timeout argument addition breaking axios.post assertion — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix: phase tracking summary is cut off — backup_project phase description incomplete — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix: jobTimeoutGuard.js and backup.js source files never shown — verify implementation exists — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: stopHeartbeat not called on job failure/exception paths in backup.js — Backend Developer (◈ Standard, 3 SP)
+
+---

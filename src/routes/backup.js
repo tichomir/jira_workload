@@ -17,6 +17,7 @@ const db = require('../db');
 const { runIntegrationBackup } = require('../services/backupEngine');
 const { triggerManualSync, getOrCreateRefreshConfig } = require('../services/dataScopeRefresh');
 const { assertPurgeCascadeAllowed } = require('../services/purgeCascade');
+const { startHeartbeat } = require('../services/jobTimeoutGuard');
 
 const router = express.Router();
 
@@ -40,29 +41,38 @@ router.post('/:id/backup', (req, res) => {
 
   const jobId = uuidv4();
   const now = new Date().toISOString();
-  const job = { id: jobId, integrationId, status: 'running', triggeredAt: now, completedAt: null, error: null };
+  const job = { id: jobId, integrationId, status: 'running', phase: 'starting', triggeredAt: now, lastHeartbeatAt: now, completedAt: null, error: null };
   db.backupJobs.set(jobId, job);
 
+  // Start heartbeat emitter — updates lastHeartbeatAt every 60 s so the
+  // timeout guard can distinguish a live-but-slow job from a hung one.
+  const stopHeartbeat = startHeartbeat(jobId);
+
   // Fire-and-forget — respond 202 immediately
-  runIntegrationBackup(integrationId).then((result) => {
-    job.status = 'completed';
-    job.completedAt = new Date().toISOString();
-    job.result = result;
-    job.backupPointId = result.backupPointId || null;
-    db.backupJobs.set(jobId, job);
-  }).catch((err) => {
-    if (err.code === 'AUTH_ERROR') {
-      // Refresh token revoked — surface a clear, actionable message (not a stack trace).
-      console.warn(`[backup] Auth error: jobId=${jobId} connectionId=${integrationId} — ${err.message}`);
-      job.status = 'auth_error';
-    } else {
-      console.error(`[backup] Backup run failed: jobId=${jobId} connectionId=${integrationId}`, err);
-      job.status = 'failed';
+  (async () => {
+    try {
+      const result = await runIntegrationBackup(integrationId, jobId);
+      job.status = 'completed';
+      job.completedAt = new Date().toISOString();
+      job.result = result;
+      job.backupPointId = result.backupPointId || null;
+      db.backupJobs.set(jobId, job);
+    } catch (err) {
+      if (err.code === 'AUTH_ERROR') {
+        // Refresh token revoked — surface a clear, actionable message (not a stack trace).
+        console.warn(`[backup] Auth error: jobId=${jobId} connectionId=${integrationId} — ${err.message}`);
+        job.status = 'auth_error';
+      } else {
+        console.error(`[backup] Backup run failed: jobId=${jobId} connectionId=${integrationId}`, err);
+        job.status = 'failed';
+      }
+      job.completedAt = new Date().toISOString();
+      job.error = err.message;
+      db.backupJobs.set(jobId, job);
+    } finally {
+      stopHeartbeat();
     }
-    job.completedAt = new Date().toISOString();
-    job.error = err.message;
-    db.backupJobs.set(jobId, job);
-  });
+  })();
 
   return res.status(202).json({ jobId, status: 'running', triggeredAt: now });
 });
@@ -121,9 +131,12 @@ router.get('/:id/backup/:jobId', (req, res) => {
     jobId: job.id,
     integrationId: job.integrationId,
     status: job.status,
+    phase: job.phase || null,
     triggeredAt: job.triggeredAt,
+    lastHeartbeatAt: job.lastHeartbeatAt || null,
     completedAt: job.completedAt,
     error: job.error || null,
+    failureReason: job.failureReason || null,
     backupPointId: job.backupPointId || null,
     objectCounts,
   });
@@ -374,11 +387,14 @@ router.post('/:id/restore-backup', (req, res) => {
     type: 'restore',
     status: 'running',
     triggeredAt: now,
+    lastHeartbeatAt: now,
     completedAt: null,
     result: null,
     error: null,
   };
   db.backupJobs.set(jobId, restoreJob);
+
+  const stopRestoreHeartbeat = startHeartbeat(jobId);
 
   const dest = destination || { type: 'original' };
   const restoreRequest = {
@@ -391,28 +407,33 @@ router.post('/:id/restore-backup', (req, res) => {
   };
 
   // Fire-and-forget
-  initiateRestore(restoreRequest).then((result) => {
-    if (result.__validationError) {
+  (async () => {
+    try {
+      const result = await initiateRestore(restoreRequest);
+      if (result.__validationError) {
+        restoreJob.status = 'failed';
+        restoreJob.error = (result.blockingError && result.blockingError.detail) || 'Pre-execution validation failed';
+      } else if (result.__fieldMappingBlocked) {
+        restoreJob.status = 'failed';
+        restoreJob.error = 'Custom field mapping blocked for cross-site restore';
+      } else {
+        restoreJob.status = result.status;
+        restoreJob.result = result;
+        restoreJob.restoreJobId = result.restoreJobId;
+      }
+      restoreJob.completedAt = new Date().toISOString();
+      db.backupJobs.set(jobId, restoreJob);
+      console.info(`[restore] Restore job done: jobId=${jobId} status=${restoreJob.status} restored=${result.restoredCount || 0} skipped=${result.skippedCount || 0} failed=${result.failedCount || 0}`);
+    } catch (err) {
       restoreJob.status = 'failed';
-      restoreJob.error = (result.blockingError && result.blockingError.detail) || 'Pre-execution validation failed';
-    } else if (result.__fieldMappingBlocked) {
-      restoreJob.status = 'failed';
-      restoreJob.error = 'Custom field mapping blocked for cross-site restore';
-    } else {
-      restoreJob.status = result.status;
-      restoreJob.result = result;
-      restoreJob.restoreJobId = result.restoreJobId;
+      restoreJob.error = err.message;
+      restoreJob.completedAt = new Date().toISOString();
+      db.backupJobs.set(jobId, restoreJob);
+      console.error(`[restore] Restore job error: jobId=${jobId}`, err);
+    } finally {
+      stopRestoreHeartbeat();
     }
-    restoreJob.completedAt = new Date().toISOString();
-    db.backupJobs.set(jobId, restoreJob);
-    console.info(`[restore] Restore job done: jobId=${jobId} status=${restoreJob.status} restored=${result.restoredCount || 0} skipped=${result.skippedCount || 0} failed=${result.failedCount || 0}`);
-  }).catch((err) => {
-    restoreJob.status = 'failed';
-    restoreJob.error = err.message;
-    restoreJob.completedAt = new Date().toISOString();
-    db.backupJobs.set(jobId, restoreJob);
-    console.error(`[restore] Restore job error: jobId=${jobId}`, err);
-  });
+  })();
 
   return res.status(202).json({ jobId, status: 'running', triggeredAt: now });
 });

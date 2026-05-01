@@ -51,6 +51,16 @@ app.use('/api/v1/sdi', sdiRouter);
 // Sprint 6 — Resilience Module routes
 app.use('/api/v1/resilience', resilienceRouter);
 
+// Sprint 15 — Job progress polling
+app.get('/api/v1/jobs/:jobId/progress', (req, res) => {
+  const { getProgress } = require('./services/jobProgress');
+  const snapshot = getProgress(req.params.jobId);
+  if (!snapshot) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'No progress record found for this job' });
+  }
+  return res.json(snapshot);
+});
+
 // Also mount at /api/ (without v1) for acceptance criteria compatibility
 app.use('/api/search', searchRouter);
 app.use('/api/backup-points', backupPointsRouter);

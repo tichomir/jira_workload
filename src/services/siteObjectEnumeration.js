@@ -1,6 +1,7 @@
 'use strict';
 
 const db = require('../db');
+const { PHASES, emitProgress } = require('./jobProgress');
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const WORKFLOW_PAGE_SIZE = 50;
@@ -44,8 +45,10 @@ async function paginateWithIsLast(url, jiraAxios, pageSize, extraParams = {}) {
  * @returns {Promise<object[]>}
  */
 async function enumerateWorkflows(cloudId, jiraAxios) {
+  console.info(`[siteEnum] enumerating workflows for cloudId=${cloudId}`);
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/workflow/search`;
   const workflows = await paginateWithIsLast(url, jiraAxios, WORKFLOW_PAGE_SIZE);
+  console.info(`[siteEnum] workflows enumerated: count=${workflows.length}`);
 
   for (const workflow of workflows) {
     const nodeKey = `${cloudId}:${workflow.id || workflow.name}`;
@@ -69,9 +72,11 @@ async function enumerateWorkflows(cloudId, jiraAxios) {
  * @returns {Promise<object[]>}
  */
 async function enumerateCustomFields(cloudId, jiraAxios) {
+  console.info(`[siteEnum] enumerating custom fields for cloudId=${cloudId}`);
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/field`;
   const response = await jiraAxios.get(url);
   const fields = response.data || [];
+  console.info(`[siteEnum] custom fields enumerated: count=${fields.length}`);
 
   for (const field of fields) {
     const nodeKey = `${cloudId}:${field.id}`;
@@ -152,18 +157,22 @@ async function enumerateCustomFieldContexts(cloudId, jiraAxios, fieldId, fieldTy
  * Order: workflows + custom fields (concurrent), then contexts (gated on fields).
  * @param {string} cloudId
  * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
+ * @param {string|null} [jobId]  Optional — for phase progress tracking
  * @returns {Promise<{workflows: object[], fields: object[], contextNodes: object[]}>}
  */
-async function runSiteEnumeration(cloudId, jiraAxios) {
+async function runSiteEnumeration(cloudId, jiraAxios, jobId = null) {
   // Step 1+2: workflows and field definitions run concurrently
+  emitProgress(jobId, { phase: PHASES.WORKFLOW_ENUM, objectType: 'JiraWorkflowNode', objectKey: cloudId });
   const [workflows, fields] = await Promise.all([
     enumerateWorkflows(cloudId, jiraAxios),
     enumerateCustomFields(cloudId, jiraAxios),
   ]);
+  emitProgress(jobId, { phase: PHASES.CUSTOM_FIELD_ENUM, objectType: 'JiraCustomFieldDefinitionNode', processed: fields.length });
 
   // Step 3: contexts enumerated per custom field only (gated on step 2 completion)
   // System fields (those without 'customfield_' prefix) do not support the /context endpoint
   const customFields = fields.filter((field) => field.id && field.id.startsWith('customfield_'));
+  console.info(`[siteEnum] enumerating contexts for ${customFields.length} custom fields`);
   const allContextNodes = [];
   for (let i = 0; i < customFields.length; i += CONTEXT_OPTIONS_CONCURRENCY) {
     const chunk = customFields.slice(i, i + CONTEXT_OPTIONS_CONCURRENCY);

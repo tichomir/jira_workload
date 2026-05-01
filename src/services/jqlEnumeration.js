@@ -2,6 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { PHASES, emitProgress } = require('./jobProgress');
 // Lazy require to break the potential module-load cycle with tokenService
 // (tokenService → db; jqlEnumeration → tokenService is fine; no cycle).
 let _verifyAndRefreshCloudId = null;
@@ -95,15 +96,19 @@ async function fetchIssuePage(cloudId, jiraAxios, jql, startAt, connectionId) {
  * @param {string} cloudId
  * @param {import('axios').AxiosInstance} jiraAxios
  * @param {string} jql
+ * @param {string|null} [jobId]  Optional — emit per-page progress when provided
+ * @param {string|null} [projectKey]  Optional — used as objectKey in progress events
  * @returns {Promise<object[]>}
  */
-async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql) {
+async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql, jobId = null, projectKey = null) {
   const allIssues = [];
   let startAt = 0;
 
   while (true) {
+    console.info(`[jql] fetching page: integrationId=${integrationId} startAt=${startAt} jql="${jql.substring(0, 80)}"`);
     const page = await fetchIssuePage(cloudId, jiraAxios, jql, startAt, integrationId);
     const { issues = [], total, maxResults } = page;
+    console.info(`[jql] page received: issues=${issues.length} total=${total} startAt=${startAt}`);
 
     for (const issue of issues) {
       const nodeKey = `${integrationId}:${issue.key}`;
@@ -124,6 +129,15 @@ async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql) {
 
     allIssues.push(...issues);
     startAt += maxResults || PAGE_SIZE;
+
+    // Emit progress after each page so the polling endpoint reflects live state.
+    emitProgress(jobId, {
+      phase: PHASES.ISSUE_FETCH,
+      objectType: 'JiraIssueNode',
+      objectKey: projectKey,
+      processed: allIssues.length,
+      total: total || allIssues.length,
+    });
 
     if (startAt >= total || issues.length === 0) {
       break;
@@ -170,9 +184,10 @@ function getOrCreateRunState(integrationId, cloudId, projectKey) {
  * @param {string} cloudId
  * @param {string} projectKey
  * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
+ * @param {string|null} [jobId]  Optional — for per-page progress tracking
  * @returns {Promise<{issues: object[], runState: object, mode: string}>}
  */
-async function runJqlEnumeration(integrationId, cloudId, projectKey, jiraAxios) {
+async function runJqlEnumeration(integrationId, cloudId, projectKey, jiraAxios, jobId = null) {
   const runState = getOrCreateRunState(integrationId, cloudId, projectKey);
   const mode = runState.lastBackupTimestamp ? 'incremental' : 'full';
 
@@ -184,7 +199,7 @@ async function runJqlEnumeration(integrationId, cloudId, projectKey, jiraAxios) 
 
   let issues;
   try {
-    issues = await paginateAllIssues(integrationId, cloudId, jiraAxios, jql);
+    issues = await paginateAllIssues(integrationId, cloudId, jiraAxios, jql, jobId, projectKey);
   } catch (err) {
     runState.lastRunStatus = 'failed';
     db.backupRunStates.set(runState.id, runState);

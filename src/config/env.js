@@ -136,6 +136,11 @@ const EXPORT_ARCHIVE_PATH = get('EXPORT_ARCHIVE_PATH', { defaultValue: './data/e
 const DATABASE_URL = get('DATABASE_URL');
 const DATABASE_POOL_SIZE = getInt('DATABASE_POOL_SIZE', { defaultValue: 10 });
 
+// Job timeout — maximum number of minutes a backup/restore job may run without
+// emitting a heartbeat before it is force-failed by the timeout guard.
+// Default: 120 minutes. Set to a lower value in dev/test environments.
+const JOB_TIMEOUT_MINUTES = getInt('JOB_TIMEOUT_MINUTES', { defaultValue: 120 });
+
 // ---------------------------------------------------------------------------
 // Safety guard: Hard Delete must never be enabled in production.
 // ---------------------------------------------------------------------------
@@ -189,4 +194,7 @@ module.exports = {
   // Database (reserved)
   DATABASE_URL,
   DATABASE_POOL_SIZE,
+
+  // Job timeout guard
+  JOB_TIMEOUT_MINUTES,
 };

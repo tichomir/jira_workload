@@ -138,6 +138,10 @@ const sdiScanResults = new Map();
 // Shape: { id, integrationId, status, triggeredAt, completedAt, error, result }
 const backupJobs = new Map();
 
+// JobProgress records (keyed by jobId) — latest snapshot only (upsert semantics)
+// Shape: JobProgressEvent — { jobId, phase, objectType, objectKey, processed, total, apiCallCount, errorCount, timestampMs }
+const jobProgress = new Map();
+
 // RestoreJob records (keyed by restoreJobId)
 // Shape: { restoreJobId, status, conflictModeEffective, conflictModeDowngradeReason,
 //          destination, validationWarnings, stageResults, currentStage,
@@ -205,6 +209,8 @@ const db = {
   sdiScanResults,
   // Sprint 12
   backupJobs,
+  // Sprint 15 — job progress tracking
+  jobProgress,
 };
 
 // Load persisted state synchronously at module load time so all routes start

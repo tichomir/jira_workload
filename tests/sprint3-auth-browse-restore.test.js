@@ -320,7 +320,8 @@ describe('TEST-1 — Proactive token refresh: backup completes and new token per
       expect.objectContaining({
         grant_type: 'refresh_token',
         refresh_token: 'valid-refresh-token',
-      })
+      }),
+      expect.objectContaining({ timeout: 15000 })
     );
 
     // AC: new tokens are persisted in db.connections (encrypted).

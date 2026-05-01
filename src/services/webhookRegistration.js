@@ -21,6 +21,7 @@ const WEBHOOK_EVENTS = ['jira:issue_created', 'jira:issue_updated', 'jira:issue_
 async function fetchExistingWebhooks(cloudId, accessToken) {
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/webhook`;
   const response = await axios.get(url, {
+    timeout: 15000,
     headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
   });
   return (response.data && response.data.values) || [];
@@ -45,6 +46,7 @@ async function registerJiraWebhook(cloudId, accessToken, jqlFilter) {
     ],
   };
   const response = await axios.post(url, webhookPayload, {
+    timeout: 15000,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
@@ -159,6 +161,7 @@ async function deregisterWebhooks(integrationId, cloudId, accessToken) {
   const webhookIds = toDelete.map((r) => r.webhookId);
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/webhook`;
   await axios.delete(url, {
+    timeout: 15000,
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     data: { webhookIds },
   });

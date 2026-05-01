@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { PHASES, emitProgress } = require('./jobProgress');
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 
@@ -16,7 +17,9 @@ const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
  */
 async function downloadAttachmentBinary(cloudId, jiraAxios, attachmentId) {
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/attachment/content/${attachmentId}`;
-  const response = await jiraAxios.get(url, { responseType: 'arraybuffer' });
+  // Use a 2-minute timeout for binary downloads (large files); the shared jiraAxios
+  // instance has a 30-second timeout that is intentionally overridden here.
+  const response = await jiraAxios.get(url, { responseType: 'arraybuffer', timeout: 120000 });
   return Buffer.from(response.data);
 }
 
@@ -79,10 +82,19 @@ function findPriorManifestEntry(integrationId, attachmentId) {
  * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @returns {Promise<object[]>}  New AttachmentManifestEntry records
  */
-async function processAttachments(integrationId, backupPointId, issues, cloudId, jiraAxios) {
+async function processAttachments(integrationId, backupPointId, issues, cloudId, jiraAxios, jobId = null) {
   const newEntries = [];
   // Track attachmentIds already processed in this run to avoid duplicates within a single run
   const processedInThisRun = new Set();
+
+  // Count total unique attachments upfront for progress reporting
+  const allAttachmentIds = new Set();
+  for (const issue of issues) {
+    for (const att of (issue.fields && issue.fields.attachment) || []) {
+      allAttachmentIds.add(String(att.id));
+    }
+  }
+  const totalAttachments = allAttachmentIds.size;
 
   for (const issue of issues) {
     const attachments = (issue.fields && issue.fields.attachment) || [];
@@ -97,6 +109,7 @@ async function processAttachments(integrationId, backupPointId, issues, cloudId,
       const prior = findPriorManifestEntry(integrationId, attachmentId);
 
       if (prior) {
+        console.debug(`[attachment] sidecar carry-forward: attachmentId=${attachmentId} issueKey=${issue.key}`);
         // Sidecar carry-forward
         const entry = {
           id: uuidv4(),
@@ -117,6 +130,7 @@ async function processAttachments(integrationId, backupPointId, issues, cloudId,
         newEntries.push(entry);
       } else {
         // Download binary
+        console.info(`[attachment] downloading binary: attachmentId=${attachmentId} issueKey=${issue.key} filename=${attachment.filename || 'unknown'}`);
         const binary = await downloadAttachmentBinary(cloudId, jiraAxios, attachmentId);
         const storageRef = uploadBinaryToStorage(integrationId, attachmentId, binary);
         const checksum = computeChecksum(binary);
@@ -139,6 +153,14 @@ async function processAttachments(integrationId, backupPointId, issues, cloudId,
         db.attachmentManifestEntries.set(entry.id, entry);
         newEntries.push(entry);
       }
+
+      emitProgress(jobId, {
+        phase: PHASES.ATTACHMENT_DOWNLOAD,
+        objectType: 'JiraAttachment',
+        objectKey: attachmentId,
+        processed: newEntries.length,
+        total: totalAttachments,
+      });
     }
   }
 
