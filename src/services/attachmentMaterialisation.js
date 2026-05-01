@@ -1,7 +1,6 @@
 'use strict';
 
 const crypto = require('crypto');
-const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 
@@ -11,16 +10,13 @@ const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
  * Download an attachment binary from Jira.
  * Returns a Buffer with the binary content.
  * @param {string} cloudId
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @param {string} attachmentId
  * @returns {Promise<Buffer>}
  */
-async function downloadAttachmentBinary(cloudId, accessToken, attachmentId) {
+async function downloadAttachmentBinary(cloudId, jiraAxios, attachmentId) {
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/attachment/content/${attachmentId}`;
-  const response = await axios.get(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    responseType: 'arraybuffer',
-  });
+  const response = await jiraAxios.get(url, { responseType: 'arraybuffer' });
   return Buffer.from(response.data);
 }
 
@@ -80,10 +76,10 @@ function findPriorManifestEntry(integrationId, attachmentId) {
  * @param {string} backupPointId
  * @param {object[]} issues  Array of Jira issue objects with fields.attachment
  * @param {string} cloudId
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @returns {Promise<object[]>}  New AttachmentManifestEntry records
  */
-async function processAttachments(integrationId, backupPointId, issues, cloudId, accessToken) {
+async function processAttachments(integrationId, backupPointId, issues, cloudId, jiraAxios) {
   const newEntries = [];
   // Track attachmentIds already processed in this run to avoid duplicates within a single run
   const processedInThisRun = new Set();
@@ -121,7 +117,7 @@ async function processAttachments(integrationId, backupPointId, issues, cloudId,
         newEntries.push(entry);
       } else {
         // Download binary
-        const binary = await downloadAttachmentBinary(cloudId, accessToken, attachmentId);
+        const binary = await downloadAttachmentBinary(cloudId, jiraAxios, attachmentId);
         const storageRef = uploadBinaryToStorage(integrationId, attachmentId, binary);
         const checksum = computeChecksum(binary);
 

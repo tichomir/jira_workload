@@ -63,6 +63,7 @@ app.post('/api/connections/:id/restore', (req, res, next) => {
   // If body contains backupPointId, route to backup-point restore; otherwise fall through to connection restore
   if (req.body && req.body.backupPointId !== undefined) {
     const { initiateRestore } = require('./services/restoreOrchestrator');
+    const { v4: uuidv4 } = require('uuid');
     const db = require('./db');
     const integrationId = req.params.id;
     const connection = db.connections.get(integrationId);
@@ -77,21 +78,31 @@ app.post('/api/connections/:id/restore', (req, res, next) => {
       return res.status(400).json({ error: 'INVALID_CONFLICT_MODE', message: 'conflictMode "merge" is permanently excluded' });
     }
     const dest = destination || { type: 'original' };
-    const result = initiateRestore({
+    const jobId = uuidv4();
+    const now = new Date().toISOString();
+    const restoreJob = { id: jobId, integrationId, type: 'restore', status: 'running', triggeredAt: now, completedAt: null, result: null, error: null };
+    db.backupJobs.set(jobId, restoreJob);
+
+    initiateRestore({
       backupPointId,
       sourceSiteId: connection.cloudId,
       destination: dest,
       conflictMode: conflictMode || 'skip',
       objectSelection: { includeAll: true },
+      connectionId: integrationId,
+    }).then((result) => {
+      restoreJob.status = result.__validationError || result.__fieldMappingBlocked ? 'failed' : result.status;
+      restoreJob.result = result;
+      restoreJob.completedAt = new Date().toISOString();
+      db.backupJobs.set(jobId, restoreJob);
+    }).catch((err) => {
+      restoreJob.status = 'failed';
+      restoreJob.error = err.message;
+      restoreJob.completedAt = new Date().toISOString();
+      db.backupJobs.set(jobId, restoreJob);
     });
-    if (result.__validationError) {
-      const err = result.blockingError;
-      return res.status(409).json({ error: err.errorCode || 'VALIDATION_FAILED', message: err.detail || 'Pre-execution validation failed' });
-    }
-    if (result.__fieldMappingBlocked) {
-      return res.status(409).json({ error: 'CUSTOM_FIELD_MAPPING_BLOCKED', message: 'Cross-site restore blocked: required custom fields not found' });
-    }
-    return res.status(200).json({ restoreJobId: result.restoreJobId, status: result.status, conflictModeEffective: result.conflictModeEffective, currentStage: result.currentStage });
+
+    return res.status(202).json({ jobId, status: 'running', triggeredAt: now });
   }
   next();
 });

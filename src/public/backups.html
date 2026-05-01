@@ -122,6 +122,7 @@ const API = '/api/v1';
 let _connectionId = null;
 let _restoreBackupPointId = null;
 let _pollInterval = null;
+let _restorePollInterval = null;
 
 function qs(id) { return document.getElementById(id); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -189,6 +190,25 @@ async function loadBackups() {
   }
 }
 
+function renderObjectCountsTable(objectCounts) {
+  if (!objectCounts) {
+    return `<span class="text-muted text-sm" style="font-style:italic">legacy backup — detail unavailable</span>`;
+  }
+  const rows = [
+    { label: 'Issues',        key: 'issues' },
+    { label: 'Projects',      key: 'projects' },
+    { label: 'Workflows',     key: 'workflows' },
+    { label: 'Custom Fields', key: 'customFields' },
+    { label: 'Boards',        key: 'boards' },
+    { label: 'Sprints',       key: 'sprints' },
+    { label: 'Attachments',   key: 'attachments' },
+  ].map(({ label, key }) => {
+    const count = objectCounts[key] !== undefined ? objectCounts[key] : '—';
+    return `<tr><td style="padding:2px 8px 2px 0;color:var(--text-muted);font-size:0.78rem">${escHtml(label)}</td><td style="padding:2px 0;font-size:0.78rem;font-weight:600">${escHtml(String(count))}</td></tr>`;
+  }).join('');
+  return `<table style="border-collapse:collapse">${rows}</table>`;
+}
+
 function renderBackups(points, total) {
   const body = qs('backups-body');
   body.classList.remove('hidden');
@@ -206,20 +226,14 @@ function renderBackups(points, total) {
 
   const rows = points.map(bp => {
     const statusCls = bp.status === 'completed' ? 'badge-active' : bp.status === 'running' ? 'badge-degraded' : 'badge-deleted';
-    const counts = bp.objectCounts || {};
-    const countStr = [
-      counts.issues ? `${counts.issues} issues` : null,
-      counts.workflows ? `${counts.workflows} workflows` : null,
-      counts.customFieldDefinitions ? `${counts.customFieldDefinitions} custom fields` : null,
-      counts.attachments ? `${counts.attachments} attachments` : null,
-    ].filter(Boolean).join(', ') || '—';
     const shortId = bp.id ? bp.id.split('-')[0] : '—';
+    const detailHtml = renderObjectCountsTable(bp.objectCounts);
 
     return `<tr>
       <td class="font-mono text-sm" title="${escHtml(bp.id)}">${escHtml(shortId)}…</td>
       <td class="font-mono text-sm">${fmtDate(bp.createdAt)}</td>
       <td><span class="badge ${statusCls}">${escHtml(bp.status || 'completed')}</span></td>
-      <td class="text-muted text-sm">${escHtml(countStr)}</td>
+      <td>${detailHtml}</td>
       <td class="actions">
         <button class="btn btn-sm btn-secondary" onclick="openRestoreModal('${escHtml(bp.id)}', '${escHtml(bp.createdAt)}')">
           Restore
@@ -272,12 +286,14 @@ function pollJob(jobId) {
     try {
       const res = await fetch(`${API}/integrations/${_connectionId}/backup/${jobId}`);
       const job = await res.json();
-      if (job.status === 'completed' || job.status === 'failed') {
+      if (job.status === 'completed' || job.status === 'failed' || job.status === 'auth_error') {
         clearInterval(_pollInterval);
         _pollInterval = null;
         qs('job-status-card').classList.add('hidden');
         if (job.status === 'completed') {
           showTriggerBanner('success', 'Backup completed', `Job ${jobId} completed at ${fmtDate(job.completedAt)}`);
+        } else if (job.status === 'auth_error') {
+          showTriggerBanner('error', 'Authentication error', job.error || 'Token expired. Please reconnect the integration from the Integrations page.');
         } else {
           showTriggerBanner('error', 'Backup failed', job.error || 'Unknown error');
         }
@@ -329,8 +345,9 @@ async function executeRestore() {
     if (!res.ok) throw new Error(data.message || 'Restore failed');
 
     closeRestoreModal();
-    showRestoreBanner('success', 'Restore initiated',
-      `Restore job ${data.restoreJobId} is ${data.status}. Stage: ${data.currentStage || '—'}`);
+    showRestoreBanner('info', 'Restore in progress',
+      `Job ${data.jobId} started. Waiting for completion…`);
+    pollRestoreJob(data.jobId);
   } catch (e) {
     closeRestoreModal();
     showRestoreBanner('error', 'Restore failed', e.message);
@@ -340,10 +357,48 @@ async function executeRestore() {
   }
 }
 
+function pollRestoreJob(jobId) {
+  if (_restorePollInterval) clearInterval(_restorePollInterval);
+  _restorePollInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/integrations/${_connectionId}/restore-backup/${jobId}`);
+      const job = await res.json();
+      if (job.status === 'complete' || job.status === 'failed' || job.status === 'running' && job.completedAt) {
+        clearInterval(_restorePollInterval);
+        _restorePollInterval = null;
+        if (job.status === 'complete') {
+          const summary = formatRestoreSummary(job);
+          showRestoreBanner('success', 'Restore completed', summary);
+        } else {
+          showRestoreBanner('error', 'Restore failed', job.error || `Job ended with status: ${job.status}`);
+        }
+      }
+    } catch (_) { /* ignore poll errors */ }
+  }, 2000);
+}
+
+function formatRestoreSummary(job) {
+  const parts = [];
+  if (job.restoredCount !== undefined) parts.push(`Restored: ${job.restoredCount}`);
+  if (job.skippedCount !== undefined) parts.push(`Skipped: ${job.skippedCount}`);
+  if (job.failedCount !== undefined) parts.push(`Failed: ${job.failedCount}`);
+  if (parts.length === 0) return 'Restore job complete.';
+  let msg = parts.join(' · ');
+  if (job.byType && Object.keys(job.byType).length > 0) {
+    const typeLines = Object.entries(job.byType)
+      .filter(([, c]) => c.restored > 0 || c.failed > 0)
+      .map(([t, c]) => `${t}: ${c.restored} restored${c.failed ? ', ' + c.failed + ' failed' : ''}`)
+      .join('; ');
+    if (typeLines) msg += ` (${typeLines})`;
+  }
+  return msg;
+}
+
 function showRestoreBanner(type, title, msg) {
   const banner = qs('banner-restore');
-  banner.className = `banner banner-${type === 'success' ? 'success' : 'error'}`;
-  qs('restore-icon').textContent = type === 'success' ? '✔' : '✖';
+  const cls = type === 'success' ? 'success' : type === 'info' ? 'info' : 'error';
+  banner.className = `banner banner-${cls}`;
+  qs('restore-icon').textContent = type === 'success' ? '✔' : type === 'info' ? '…' : '✖';
   qs('restore-title').textContent = title;
   qs('restore-msg').textContent = msg;
   banner.classList.remove('hidden');

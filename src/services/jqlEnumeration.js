@@ -1,6 +1,5 @@
 'use strict';
 
-const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 
@@ -43,15 +42,14 @@ function buildJql(projectKey, lastBackupTimestamp) {
 /**
  * Fetch a single page of issues from the Jira search API.
  * @param {string} cloudId
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @param {string} jql
  * @param {number} startAt
  * @returns {Promise<{issues: object[], total: number, startAt: number, maxResults: number}>}
  */
-async function fetchIssuePage(cloudId, accessToken, jql, startAt) {
+async function fetchIssuePage(cloudId, jiraAxios, jql, startAt) {
   const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/search`;
-  const response = await axios.get(url, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  const response = await jiraAxios.get(url, {
     params: { jql, startAt, maxResults: PAGE_SIZE },
   });
   return response.data;
@@ -62,16 +60,16 @@ async function fetchIssuePage(cloudId, accessToken, jql, startAt) {
  * Returns all issues collected.
  * @param {string} integrationId
  * @param {string} cloudId
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios
  * @param {string} jql
  * @returns {Promise<object[]>}
  */
-async function paginateAllIssues(integrationId, cloudId, accessToken, jql) {
+async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql) {
   const allIssues = [];
   let startAt = 0;
 
   while (true) {
-    const page = await fetchIssuePage(cloudId, accessToken, jql, startAt);
+    const page = await fetchIssuePage(cloudId, jiraAxios, jql, startAt);
     const { issues = [], total, maxResults } = page;
 
     for (const issue of issues) {
@@ -138,10 +136,10 @@ function getOrCreateRunState(integrationId, cloudId, projectKey) {
  * @param {string} integrationId
  * @param {string} cloudId
  * @param {string} projectKey
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @returns {Promise<{issues: object[], runState: object, mode: string}>}
  */
-async function runJqlEnumeration(integrationId, cloudId, projectKey, accessToken) {
+async function runJqlEnumeration(integrationId, cloudId, projectKey, jiraAxios) {
   const runState = getOrCreateRunState(integrationId, cloudId, projectKey);
   const mode = runState.lastBackupTimestamp ? 'incremental' : 'full';
 
@@ -153,7 +151,7 @@ async function runJqlEnumeration(integrationId, cloudId, projectKey, accessToken
 
   let issues;
   try {
-    issues = await paginateAllIssues(integrationId, cloudId, accessToken, jql);
+    issues = await paginateAllIssues(integrationId, cloudId, jiraAxios, jql);
   } catch (err) {
     runState.lastRunStatus = 'failed';
     db.backupRunStates.set(runState.id, runState);

@@ -51,8 +51,14 @@ router.post('/:id/backup', (req, res) => {
     job.backupPointId = result.backupPointId || null;
     db.backupJobs.set(jobId, job);
   }).catch((err) => {
-    console.error(`[backup] Backup run failed: jobId=${jobId} connectionId=${integrationId}`, err);
-    job.status = 'failed';
+    if (err.code === 'AUTH_ERROR') {
+      // Refresh token revoked — surface a clear, actionable message (not a stack trace).
+      console.warn(`[backup] Auth error: jobId=${jobId} connectionId=${integrationId} — ${err.message}`);
+      job.status = 'auth_error';
+    } else {
+      console.error(`[backup] Backup run failed: jobId=${jobId} connectionId=${integrationId}`, err);
+      job.status = 'failed';
+    }
     job.completedAt = new Date().toISOString();
     job.error = err.message;
     db.backupJobs.set(jobId, job);
@@ -104,7 +110,23 @@ router.get('/:id/backup/:jobId', (req, res) => {
     return errorResponse(res, 404, 'BACKUP_JOB_NOT_FOUND', `Backup job ${jobId} not found`);
   }
 
-  return res.status(200).json({ jobId: job.id, integrationId: job.integrationId, status: job.status, triggeredAt: job.triggeredAt, completedAt: job.completedAt, error: job.error || null });
+  // Include objectCounts from the persisted backup point when available
+  let objectCounts = null;
+  if (job.backupPointId && db.backupPoints.has(job.backupPointId)) {
+    const bp = db.backupPoints.get(job.backupPointId);
+    objectCounts = bp.objectCounts || null;
+  }
+
+  return res.status(200).json({
+    jobId: job.id,
+    integrationId: job.integrationId,
+    status: job.status,
+    triggeredAt: job.triggeredAt,
+    completedAt: job.completedAt,
+    error: job.error || null,
+    backupPointId: job.backupPointId || null,
+    objectCounts,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -126,7 +148,7 @@ function listBackupPoints(req, res) {
       createdAt: bp.createdAt,
       priorBackupPointId: bp.priorBackupPointId || null,
       status: bp.status || 'completed',
-      objectCounts: bp.objectCounts || { issues: 0, workflows: 0, customFieldDefinitions: 0, attachments: 0 },
+      objectCounts: bp.objectCounts || null,
     });
   }
 
@@ -321,9 +343,9 @@ router.get('/:id/attachments', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/integrations/:id/restore-backup
-// Convenience endpoint: initiate a data restore from a backup point.
+// Initiate a data restore from a backup point. Fire-and-forget async job.
 // Body: { backupPointId, conflictMode?, destination? }
-// Returns restore job status.
+// Returns jobId immediately; poll GET /:id/restore-backup/:jobId for results.
 // ---------------------------------------------------------------------------
 router.post('/:id/restore-backup', (req, res) => {
   const integrationId = req.params.id;
@@ -343,8 +365,21 @@ router.post('/:id/restore-backup', (req, res) => {
     return errorResponse(res, 400, 'INVALID_CONFLICT_MODE', 'conflictMode "merge" is permanently excluded');
   }
 
-  // Delegate to the restore engine
   const { initiateRestore } = require('../services/restoreOrchestrator');
+  const jobId = uuidv4();
+  const now = new Date().toISOString();
+  const restoreJob = {
+    id: jobId,
+    integrationId,
+    type: 'restore',
+    status: 'running',
+    triggeredAt: now,
+    completedAt: null,
+    result: null,
+    error: null,
+  };
+  db.backupJobs.set(jobId, restoreJob);
+
   const dest = destination || { type: 'original' };
   const restoreRequest = {
     backupPointId,
@@ -352,25 +387,70 @@ router.post('/:id/restore-backup', (req, res) => {
     destination: dest,
     conflictMode: conflictMode || 'skip',
     objectSelection: { includeAll: true },
+    connectionId: integrationId,
   };
 
-  const result = initiateRestore(restoreRequest);
-
-  if (result.__validationError) {
-    const err = result.blockingError;
-    return errorResponse(res, 409, err.errorCode || 'VALIDATION_FAILED', err.detail || 'Pre-execution validation failed');
-  }
-  if (result.__fieldMappingBlocked) {
-    return errorResponse(res, 409, 'CUSTOM_FIELD_MAPPING_BLOCKED',
-      `Cross-site restore blocked: required custom fields not found on target site`);
-  }
-
-  return res.status(200).json({
-    restoreJobId: result.restoreJobId,
-    status: result.status,
-    conflictModeEffective: result.conflictModeEffective,
-    currentStage: result.currentStage,
+  // Fire-and-forget
+  initiateRestore(restoreRequest).then((result) => {
+    if (result.__validationError) {
+      restoreJob.status = 'failed';
+      restoreJob.error = (result.blockingError && result.blockingError.detail) || 'Pre-execution validation failed';
+    } else if (result.__fieldMappingBlocked) {
+      restoreJob.status = 'failed';
+      restoreJob.error = 'Custom field mapping blocked for cross-site restore';
+    } else {
+      restoreJob.status = result.status;
+      restoreJob.result = result;
+      restoreJob.restoreJobId = result.restoreJobId;
+    }
+    restoreJob.completedAt = new Date().toISOString();
+    db.backupJobs.set(jobId, restoreJob);
+    console.info(`[restore] Restore job done: jobId=${jobId} status=${restoreJob.status} restored=${result.restoredCount || 0} skipped=${result.skippedCount || 0} failed=${result.failedCount || 0}`);
+  }).catch((err) => {
+    restoreJob.status = 'failed';
+    restoreJob.error = err.message;
+    restoreJob.completedAt = new Date().toISOString();
+    db.backupJobs.set(jobId, restoreJob);
+    console.error(`[restore] Restore job error: jobId=${jobId}`, err);
   });
+
+  return res.status(202).json({ jobId, status: 'running', triggeredAt: now });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/integrations/:id/restore-backup/:jobId
+// Poll a restore job status and final counts.
+// ---------------------------------------------------------------------------
+router.get('/:id/restore-backup/:jobId', (req, res) => {
+  const { id: integrationId, jobId } = req.params;
+  const connection = db.connections.get(integrationId);
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  const job = db.backupJobs.get(jobId);
+  if (!job || job.integrationId !== integrationId) {
+    return errorResponse(res, 404, 'RESTORE_JOB_NOT_FOUND', `Restore job ${jobId} not found`);
+  }
+
+  const resp = {
+    jobId: job.id,
+    status: job.status,
+    triggeredAt: job.triggeredAt,
+    completedAt: job.completedAt,
+    error: job.error || null,
+  };
+
+  if (job.result) {
+    resp.restoreJobId = job.result.restoreJobId;
+    resp.restoredCount = job.result.restoredCount || 0;
+    resp.skippedCount = job.result.skippedCount || 0;
+    resp.failedCount = job.result.failedCount || 0;
+    resp.byType = job.result.byType || {};
+    resp.conflictModeEffective = job.result.conflictModeEffective;
+  }
+
+  return res.status(200).json(resp);
 });
 
 module.exports = router;

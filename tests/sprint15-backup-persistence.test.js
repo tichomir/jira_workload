@@ -45,6 +45,21 @@ jest.mock('../src/services/crypto', () => ({
   decrypt: (v) => v.replace(/^enc:/, ''),
 }));
 
+// Mock tokenService so tests do not depend on real OAuth token refresh.
+// createJiraAxiosInstance returns a minimal proxy to the mocked axios.get/post
+// so existing mockBackupApiCalls() setups continue to work.
+jest.mock('../src/services/tokenService', () => {
+  const axiosMod = require('axios');
+  return {
+    getValidAccessToken: jest.fn().mockResolvedValue('mock-access-token-sprint15'),
+    createJiraAxiosInstance: jest.fn(() => ({
+      get: axiosMod.get,
+      post: axiosMod.post,
+    })),
+    refreshConnectionToken: jest.fn().mockResolvedValue('mock-access-token-sprint15'),
+  };
+});
+
 const request = require('supertest');
 const axios   = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -86,6 +101,8 @@ function seedConnection(overrides = {}) {
     ],
     accessToken:        'enc:mock-access-token-sprint15',
     refreshToken:       'enc:mock-refresh-token-sprint15',
+    // Set expiry 1 hour from now so getValidAccessToken skips proactive refresh
+    accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
     projectScopeMode:   'all',
     selectedProjectIds: [],
     userId:             'qa-test-user-sprint15',
@@ -385,7 +402,7 @@ describe('TC-PERSIST-5: backups.html API surface — both endpoints return consi
     // objectCounts must include workflow count from mocked enumeration (2 workflows)
     expect(listedBp.objectCounts.workflows).toBe(2);
     // Custom field definitions: 4 fields total (3 system + 1 custom filtered to 1 context)
-    expect(listedBp.objectCounts.customFieldDefinitions).toBeGreaterThanOrEqual(1);
+    expect(listedBp.objectCounts.customFields).toBeGreaterThanOrEqual(1);
 
     // --- Step 4: Simulate backups.html job-poll to confirm job is completed ---
     const jobPollRes = await request(app)

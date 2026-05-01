@@ -19,6 +19,24 @@ jest.mock('../src/services/crypto', () => ({
   decrypt: (v) => v.replace(/^enc:/, ''),
 }));
 
+// ---------------------------------------------------------------------------
+// Mock tokenService — prevents real HTTP token refresh in unit tests.
+// createJiraAxiosInstance returns a minimal object that proxies to the mocked
+// axios.get / axios.post so existing mock setups (axios.get.mockResolvedValue)
+// continue to work transparently.
+// ---------------------------------------------------------------------------
+jest.mock('../src/services/tokenService', () => {
+  const axiosMod = require('axios');
+  return {
+    getValidAccessToken: jest.fn().mockResolvedValue('test-access-token'),
+    createJiraAxiosInstance: jest.fn(() => ({
+      get: axiosMod.get,
+      post: axiosMod.post,
+    })),
+    refreshConnectionToken: jest.fn().mockResolvedValue('test-access-token'),
+  };
+});
+
 const db = require('../src/db');
 const {
   formatJqlTimestamp,
@@ -140,6 +158,14 @@ function makeIssue(key, overrides = {}) {
   };
 }
 
+/**
+ * Returns a minimal jiraAxios mock that proxies to the mocked axios.get/post.
+ * Pass this wherever functions previously accepted an accessToken string.
+ */
+function makeMockJiraAxios() {
+  return { get: axios.get, post: axios.post };
+}
+
 // ---------------------------------------------------------------------------
 // 1. JQL Enumeration — Full and Incremental
 // ---------------------------------------------------------------------------
@@ -184,7 +210,7 @@ describe('JQL Enumeration', () => {
         data: { issues: [issue3], total: 3, startAt: 2, maxResults: 2 },
       });
 
-    const issues = await paginateAllIssues('integ-1', 'cloud-abc', 'token', 'project="PROJ" ORDER BY updated ASC');
+    const issues = await paginateAllIssues('integ-1', 'cloud-abc', makeMockJiraAxios(), 'project="PROJ" ORDER BY updated ASC');
 
     expect(issues).toHaveLength(3);
     expect(axios.get).toHaveBeenCalledTimes(2);
@@ -201,7 +227,7 @@ describe('JQL Enumeration', () => {
       data: { issues: [issue1], total: 1, startAt: 0, maxResults: 100 },
     });
 
-    const { runState, mode } = await runJqlEnumeration('integ-1', 'cloud-abc', 'PROJ', 'token');
+    const { runState, mode } = await runJqlEnumeration('integ-1', 'cloud-abc', 'PROJ', makeMockJiraAxios());
 
     expect(mode).toBe('full');
     expect(runState.lastBackupTimestamp).not.toBeNull();
@@ -227,7 +253,7 @@ describe('JQL Enumeration', () => {
       data: { issues: [issue1], total: 1, startAt: 0, maxResults: 100 },
     });
 
-    const { mode } = await runJqlEnumeration('integ-2', 'cloud-abc', 'PROJ', 'token');
+    const { mode } = await runJqlEnumeration('integ-2', 'cloud-abc', 'PROJ', makeMockJiraAxios());
 
     expect(mode).toBe('incremental');
     // Verify the JQL contained updated>= clause
@@ -241,7 +267,7 @@ describe('JQL Enumeration', () => {
       data: { issues: [issue1], total: 1, startAt: 0, maxResults: 100 },
     });
 
-    await runJqlEnumeration('integ-3', 'cloud-abc', 'PROJ', 'token');
+    await runJqlEnumeration('integ-3', 'cloud-abc', 'PROJ', makeMockJiraAxios());
 
     expect(db.issueNodes.has('integ-3:PROJ-10')).toBe(true);
   });
@@ -380,7 +406,7 @@ describe('Attachment Materialisation', () => {
       },
     ];
 
-    const entries = await processAttachments('integ-1', 'bp-1', issues, 'cloud-abc', 'token');
+    const entries = await processAttachments('integ-1', 'bp-1', issues, 'cloud-abc', makeMockJiraAxios());
 
     expect(entries).toHaveLength(1);
     expect(entries[0].sidecarOnly).toBe(false);
@@ -421,7 +447,7 @@ describe('Attachment Materialisation', () => {
       },
     ];
 
-    const entries = await processAttachments('integ-2', 'bp-2', issues, 'cloud-abc', 'token');
+    const entries = await processAttachments('integ-2', 'bp-2', issues, 'cloud-abc', makeMockJiraAxios());
 
     expect(entries).toHaveLength(1);
     expect(entries[0].sidecarOnly).toBe(true);
@@ -440,7 +466,7 @@ describe('Attachment Materialisation', () => {
       { key: 'PROJ-2', fields: { attachment: [{ id: 'att-200', filename: 'a.txt', size: 10 }] } },
     ];
 
-    const entries = await processAttachments('integ-3', 'bp-3', issues, 'cloud-abc', 'token');
+    const entries = await processAttachments('integ-3', 'bp-3', issues, 'cloud-abc', makeMockJiraAxios());
 
     // Only one entry created, download called once
     expect(entries).toHaveLength(1);
@@ -455,7 +481,7 @@ describe('Attachment Materialisation', () => {
       { key: 'PROJ-1', fields: { attachment: [{ id: 'att-300', filename: 'x.bin', size: 7 }] } },
     ];
 
-    await processAttachments('integ-4', 'bp-4', issues, 'cloud-abc', 'token');
+    await processAttachments('integ-4', 'bp-4', issues, 'cloud-abc', makeMockJiraAxios());
 
     const stored = [...db.attachmentManifestEntries.values()].find(
       (e) => e.attachmentId === 'att-300' && e.integrationId === 'integ-4'
@@ -490,7 +516,7 @@ describe('Site-Level Object Enumeration', () => {
       .mockResolvedValueOnce({ data: { values: [wf1, wf2], isLast: false, total: 3 } })
       .mockResolvedValueOnce({ data: { values: [wf3], isLast: true, total: 3 } });
 
-    const workflows = await enumerateWorkflows('cloud-abc', 'token');
+    const workflows = await enumerateWorkflows('cloud-abc', makeMockJiraAxios());
 
     expect(workflows).toHaveLength(3);
     expect(db.workflowNodes.size).toBe(3);
@@ -506,7 +532,7 @@ describe('Site-Level Object Enumeration', () => {
     ];
     axios.get.mockResolvedValue({ data: fields });
 
-    const result = await enumerateCustomFields('cloud-abc', 'token');
+    const result = await enumerateCustomFields('cloud-abc', makeMockJiraAxios());
 
     expect(result).toHaveLength(2);
     expect(db.customFieldDefinitions.size).toBe(2);
@@ -525,7 +551,7 @@ describe('Site-Level Object Enumeration', () => {
       .mockResolvedValueOnce({ data: { values: [ctx1], isLast: true } })
       .mockResolvedValueOnce({ data: { values: [opt1, opt2], isLast: true } });
 
-    const nodes = await enumerateCustomFieldContexts('cloud-abc', 'token', 'customfield_10002', 'select');
+    const nodes = await enumerateCustomFieldContexts('cloud-abc', makeMockJiraAxios(), 'customfield_10002', 'select');
 
     expect(nodes).toHaveLength(1);
     expect(nodes[0].options).toHaveLength(2);
@@ -536,7 +562,7 @@ describe('Site-Level Object Enumeration', () => {
     const ctx1 = { id: 'ctx-10', name: 'Context', isGlobalContext: false };
     axios.get.mockResolvedValueOnce({ data: { values: [ctx1], isLast: true } });
 
-    await enumerateCustomFieldContexts('cloud-abc', 'token', 'customfield_99', 'number');
+    await enumerateCustomFieldContexts('cloud-abc', makeMockJiraAxios(), 'customfield_99', 'number');
 
     // Only 1 API call (contexts only, no options)
     expect(axios.get).toHaveBeenCalledTimes(1);
@@ -549,7 +575,7 @@ describe('Site-Level Object Enumeration', () => {
       .mockResolvedValueOnce({ data: [{ id: 'customfield_1', name: 'CF1', schema: { type: 'number' } }] }) // fields
       .mockResolvedValueOnce({ data: { values: [], isLast: true } }); // contexts for CF1
 
-    const result = await runSiteEnumeration('cloud-abc', 'token');
+    const result = await runSiteEnumeration('cloud-abc', makeMockJiraAxios());
 
     expect(result.workflows).toHaveLength(1);
     expect(result.fields).toHaveLength(1);
@@ -967,7 +993,7 @@ describe('AC: Full JQL Enumeration — 3 pages × 100 issues = 300 total', () =>
       .mockResolvedValueOnce({ data: { issues: makePage(1, 100), total: 300, startAt: 100, maxResults: 100 } })
       .mockResolvedValueOnce({ data: { issues: makePage(2, 100), total: 300, startAt: 200, maxResults: 100 } });
 
-    const issues = await paginateAllIssues('integ-ac1', 'cloud-abc', 'token',
+    const issues = await paginateAllIssues('integ-ac1', 'cloud-abc', makeMockJiraAxios(),
       'project="PROJ" ORDER BY updated ASC');
 
     expect(issues).toHaveLength(300);
@@ -998,7 +1024,7 @@ describe('AC: Full JQL Enumeration — 3 pages × 100 issues = 300 total', () =>
       .mockResolvedValueOnce({ data: { issues: makeSimplePage(100, 200), total: 300, startAt: 200, maxResults: 100 } });
 
     const beforeRun = new Date();
-    const { runState, mode } = await runJqlEnumeration('integ-ac2', 'cloud-abc', 'PROJ', 'token');
+    const { runState, mode } = await runJqlEnumeration('integ-ac2', 'cloud-abc', 'PROJ', makeMockJiraAxios());
 
     expect(mode).toBe('full');
     expect(runState.lastBackupTimestamp).not.toBeNull();
@@ -1019,7 +1045,7 @@ describe('AC: Incremental Cursor Correctness', () => {
     axios.get.mockResolvedValueOnce({
       data: { issues: [makeIssue('PROJ-1')], total: 1, startAt: 0, maxResults: 100 },
     });
-    const { runState } = await runJqlEnumeration('integ-inc1', 'cloud-abc', 'PROJ', 'token');
+    const { runState } = await runJqlEnumeration('integ-inc1', 'cloud-abc', 'PROJ', makeMockJiraAxios());
     const firstTimestamp = runState.lastBackupTimestamp;
     expect(firstTimestamp).not.toBeNull();
 
@@ -1029,7 +1055,7 @@ describe('AC: Incremental Cursor Correctness', () => {
       data: { issues: [makeIssue('PROJ-2')], total: 1, startAt: 0, maxResults: 100 },
     });
 
-    const { mode } = await runJqlEnumeration('integ-inc1', 'cloud-abc', 'PROJ', 'token');
+    const { mode } = await runJqlEnumeration('integ-inc1', 'cloud-abc', 'PROJ', makeMockJiraAxios());
     expect(mode).toBe('incremental');
 
     const secondCallJql = axios.get.mock.calls[0][1].params.jql;
@@ -1125,7 +1151,7 @@ describe('AC: Attachment Deduplication — 5 existing + 2 new IDs', () => {
     axios.get.mockResolvedValue({ data: fakeBinary.buffer });
 
     const entries = await processAttachments(
-      'integ-dedup1', 'bp-current', issues, 'cloud-abc', 'token'
+      'integ-dedup1', 'bp-current', issues, 'cloud-abc', makeMockJiraAxios()
     );
 
     // Should have 7 entries total (5 sidecar + 2 new downloads)
@@ -1175,7 +1201,7 @@ describe('AC: Site-Level Enumeration runs even with empty project scope', () => 
       // Contexts for cf-1
       .mockResolvedValueOnce({ data: { values: [], isLast: true } });
 
-    const result = await runSiteEnumeration('cloud-empty', 'token');
+    const result = await runSiteEnumeration('cloud-empty', makeMockJiraAxios());
 
     expect(result.workflows).toHaveLength(1);
     expect(result.fields).toHaveLength(1);
@@ -1250,11 +1276,11 @@ describe('AC: Custom Field Context and Option Enumeration per field', () => {
     // No options call for cf-number (type=number is not in OPTION_FIELD_TYPES)
 
     // Call enumerateCustomFields then enumerateCustomFieldContexts for each
-    const fieldResult = await enumerateCustomFields('cloud-ctx', 'token');
+    const fieldResult = await enumerateCustomFields('cloud-ctx', makeMockJiraAxios());
     expect(fieldResult).toHaveLength(2);
 
-    const ctxSelect = await enumerateCustomFieldContexts('cloud-ctx', 'token', 'cf-select', 'select');
-    const ctxNumber = await enumerateCustomFieldContexts('cloud-ctx', 'token', 'cf-number', 'number');
+    const ctxSelect = await enumerateCustomFieldContexts('cloud-ctx', makeMockJiraAxios(), 'cf-select', 'select');
+    const ctxNumber = await enumerateCustomFieldContexts('cloud-ctx', makeMockJiraAxios(), 'cf-number', 'number');
 
     // select field got contexts and options
     expect(ctxSelect).toHaveLength(1);

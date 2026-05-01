@@ -2,21 +2,12 @@
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { decrypt } = require('./crypto');
+const { getValidAccessToken, createJiraAxiosInstance } = require('./tokenService');
 const { runJqlEnumeration } = require('./jqlEnumeration');
 const { ensureWebhookRegistered, buildWebhookJqlFilter } = require('./webhookRegistration');
 const { processAttachments } = require('./attachmentMaterialisation');
 const { runSiteEnumeration } = require('./siteObjectEnumeration');
 const { tagIssueNodes } = require('./archiveScope');
-
-/**
- * Get the decrypted access token for a connection.
- * @param {object} connection
- * @returns {string}
- */
-function getAccessToken(connection) {
-  return decrypt(connection.accessToken);
-}
 
 /**
  * Run a full backup for a single project within an integration.
@@ -25,10 +16,10 @@ function getAccessToken(connection) {
  * @param {string} integrationId
  * @param {string} cloudId
  * @param {string} projectKey
- * @param {string} accessToken
+ * @param {import('axios').AxiosInstance} jiraAxios  Shared Axios instance with 401 interceptor
  * @returns {Promise<{issues: object[], mode: string, runState: object, attachmentEntries: object[]}>}
  */
-async function runProjectBackup(integrationId, cloudId, projectKey, accessToken) {
+async function runProjectBackup(integrationId, cloudId, projectKey, jiraAxios) {
   const backupPointId = uuidv4();
 
   // JQL enumeration (full or incremental)
@@ -36,7 +27,7 @@ async function runProjectBackup(integrationId, cloudId, projectKey, accessToken)
     integrationId,
     cloudId,
     projectKey,
-    accessToken
+    jiraAxios
   );
 
   // Attachment materialisation
@@ -45,7 +36,7 @@ async function runProjectBackup(integrationId, cloudId, projectKey, accessToken)
     backupPointId,
     issues,
     cloudId,
-    accessToken
+    jiraAxios
   );
 
   // Archive scope attribute tagging
@@ -56,9 +47,11 @@ async function runProjectBackup(integrationId, cloudId, projectKey, accessToken)
 
 /**
  * Run a full integration backup:
- * 1. Ensure webhook registered (idempotent)
- * 2. For each project in scope: run project backup
- * 3. Run site-level enumeration (workflows, custom fields, contexts)
+ * 1. Proactively refresh OAuth token if expiring within 5 minutes.
+ * 2. Create a shared Axios instance with a 401-retry interceptor.
+ * 3. Ensure webhook registered (idempotent).
+ * 4. For each project in scope: run project backup.
+ * 5. Run site-level enumeration (workflows, custom fields, contexts).
  *
  * @param {string} integrationId
  * @returns {Promise<object>}
@@ -70,7 +63,12 @@ async function runIntegrationBackup(integrationId) {
   }
 
   const { cloudId } = connection;
-  const accessToken = getAccessToken(connection);
+
+  // Proactive token check: refresh if expiring within 5 minutes.
+  // createJiraAxiosInstance uses the fresh token and attaches a 401 interceptor
+  // that will transparently refresh and retry if the token expires mid-run.
+  const accessToken = await getValidAccessToken(integrationId);
+  const jiraAxios = createJiraAxiosInstance(integrationId, accessToken);
 
   // 1. Ensure webhook is registered (requires manage:jira-webhook scope)
   const hasWebhookScope = connection.grantedScopes &&
@@ -97,12 +95,12 @@ async function runIntegrationBackup(integrationId) {
   // 3. Run per-project backup
   const projectResults = [];
   for (const projectKey of projectKeys) {
-    const result = await runProjectBackup(integrationId, cloudId, projectKey, accessToken);
+    const result = await runProjectBackup(integrationId, cloudId, projectKey, jiraAxios);
     projectResults.push({ projectKey, ...result });
   }
 
   // 4. Site-level enumeration (runs regardless of project scope)
-  const siteEnumResult = await runSiteEnumeration(cloudId, accessToken);
+  const siteEnumResult = await runSiteEnumeration(cloudId, jiraAxios);
 
   // Update lastSyncedAt on connection
   const now = new Date().toISOString();
@@ -127,12 +125,47 @@ async function runIntegrationBackup(integrationId) {
     status: 'completed',
     objectCounts: {
       issues: totalIssues,
+      projects: projectResults.length,
       workflows: siteEnumResult.workflows.length,
-      customFieldDefinitions: siteEnumResult.fields.length,
+      customFields: siteEnumResult.fields.length,
+      boards: 0,
+      sprints: 0,
       attachments: totalAttachments,
     },
   };
   db.backupPoints.set(backupPointId, backupPoint);
+
+  // Populate objectSnapshots so the restore engine can build a basket from this backup point.
+  for (const pr of projectResults) {
+    for (const issue of pr.issues || []) {
+      const issueId = issue.id || issue.key;
+      db.objectSnapshots.set(`${backupPointId}:JiraIssueNode:${issueId}`, {
+        backupPointId,
+        nodeType: 'JiraIssueNode',
+        id: issueId,
+        fields: issue.fields || {},
+        issueKey: issue.key,
+      });
+    }
+  }
+  for (const wf of siteEnumResult.workflows || []) {
+    const wfId = wf.id || wf.name;
+    db.objectSnapshots.set(`${backupPointId}:JiraWorkflowNode:${wfId}`, {
+      backupPointId,
+      nodeType: 'JiraWorkflowNode',
+      id: wfId,
+      fields: wf,
+    });
+  }
+  for (const field of siteEnumResult.fields || []) {
+    db.objectSnapshots.set(`${backupPointId}:JiraCustomFieldDefinitionNode:${field.id}`, {
+      backupPointId,
+      nodeType: 'JiraCustomFieldDefinitionNode',
+      id: field.id,
+      fields: field,
+    });
+  }
+
   db.saveDb();
   console.info(`[backup] Backup record persisted: jobId=${backupPointId} connectionId=${integrationId}`);
 
@@ -154,5 +187,4 @@ async function runIntegrationBackup(integrationId) {
 module.exports = {
   runProjectBackup,
   runIntegrationBackup,
-  getAccessToken,
 };
