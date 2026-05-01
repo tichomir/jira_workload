@@ -253,7 +253,10 @@ async function runIntegrationBackup(integrationId, jobId) {
     }
   }
   for (const wf of siteEnumResult.workflows || []) {
-    const wfId = wf.id || wf.name;
+    // wf.id from Jira workflow search API is { name, entityId, draft } — extract scalar string
+    const wfId = (wf.id && typeof wf.id === 'object')
+      ? (wf.id.entityId || wf.id.name || wf.name)
+      : (wf.id || wf.name);
     db.objectSnapshots.set(`${backupPointId}:JiraWorkflowNode:${wfId}`, {
       backupPointId,
       nodeType: 'JiraWorkflowNode',
@@ -288,10 +291,12 @@ async function runIntegrationBackup(integrationId, jobId) {
   });
   saveManifest(backupPointId, 'JiraProjectNode', projectManifestEntries);
 
-  const workflowManifestEntries = (siteEnumResult.workflows || []).map(wf => ({
-    id: wf.id || wf.name,
-    contentHash: computeContentHash(wf),
-  }));
+  const workflowManifestEntries = (siteEnumResult.workflows || []).map(wf => {
+    const wfId = (wf.id && typeof wf.id === 'object')
+      ? (wf.id.entityId || wf.id.name || wf.name)
+      : (wf.id || wf.name);
+    return { id: wfId, contentHash: computeContentHash(wf) };
+  });
   saveManifest(backupPointId, 'JiraWorkflowNode', workflowManifestEntries);
 
   const fieldManifestEntries = (siteEnumResult.fields || []).map(field => ({

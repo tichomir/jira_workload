@@ -51,10 +51,14 @@ async function enumerateWorkflows(cloudId, jiraAxios) {
   console.info(`[siteEnum] workflows enumerated: count=${workflows.length}`);
 
   for (const workflow of workflows) {
-    const nodeKey = `${cloudId}:${workflow.id || workflow.name}`;
+    // workflow.id from Jira workflow search API is { name, entityId, draft } — extract scalar
+    const wfId = (workflow.id && typeof workflow.id === 'object')
+      ? (workflow.id.entityId || workflow.id.name || workflow.name)
+      : (workflow.id || workflow.name);
+    const nodeKey = `${cloudId}:${wfId}`;
     db.workflowNodes.set(nodeKey, {
       cloudId,
-      workflowId: workflow.id || workflow.name,
+      workflowId: wfId,
       name: workflow.name,
       raw: workflow,
       upsertedAt: new Date().toISOString(),

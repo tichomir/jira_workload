@@ -107,13 +107,38 @@ function prependCommentAuthorAdfHeader(adfDoc, author, originalCreatedDate) {
  * @throws {Error} with code WORKFLOW_DEFINITION_MISSING if definition is absent.
  */
 function buildWorkflowRestorePayload(backupWorkflow) {
-  if (!backupWorkflow || !backupWorkflow.definition) {
+  if (!backupWorkflow) {
     const err = new Error('Workflow definition is missing from backup store');
     err.code = 'WORKFLOW_DEFINITION_MISSING';
     throw err;
   }
-  // Return the full definition as-is; this is the complete payload for the Jira API.
-  return backupWorkflow.definition;
+
+  // Handle legacy format where the full definition is nested under a `definition` key.
+  if (backupWorkflow.definition && typeof backupWorkflow.definition === 'object') {
+    return backupWorkflow.definition;
+  }
+
+  // Raw Jira API workflow format: the Jira workflow search endpoint returns
+  //   { id: { name, entityId, draft }, name, description, statuses, transitions, ... }
+  // statuses and transitions are directly on the object.
+  const name = backupWorkflow.name
+    || (backupWorkflow.id && typeof backupWorkflow.id === 'object' && backupWorkflow.id.name);
+  const statuses = backupWorkflow.statuses;
+  const transitions = backupWorkflow.transitions;
+
+  if (!name || !Array.isArray(statuses) || !Array.isArray(transitions)) {
+    const err = new Error('Workflow definition is missing from backup store');
+    err.code = 'WORKFLOW_DEFINITION_MISSING';
+    throw err;
+  }
+
+  // Return the complete workflow definition payload for the Jira REST API v3.
+  return {
+    name,
+    description: backupWorkflow.description || '',
+    statuses,
+    transitions,
+  };
 }
 
 module.exports = {

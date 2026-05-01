@@ -300,13 +300,16 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
     case 'workflow': {
       let payload;
       try {
-        payload = { definition: buildWorkflowRestorePayload(fields) };
+        payload = buildWorkflowRestorePayload(fields);
       } catch (err) {
-        throw Object.assign(new Error('Cannot restore workflow: missing definition'), { code: 'WORKFLOW_DEFINITION_MISSING' });
+        throw Object.assign(new Error(`Cannot restore workflow: ${err.message}`), { code: err.code || 'WORKFLOW_DEFINITION_MISSING' });
       }
       if (!jiraAxios) return { targetId: uuidv4(), payload };
       const resp = await jiraAxios.post(`${base}/rest/api/3/workflow/create`, payload);
-      return { targetId: resp.data.id || resp.data.entityId || uuidv4() };
+      const entityId = (resp.data.id && typeof resp.data.id === 'object')
+        ? (resp.data.id.entityId || resp.data.id.name)
+        : (resp.data.id || resp.data.entityId);
+      return { targetId: entityId || uuidv4() };
     }
 
     case 'customFieldDefinition': {
@@ -393,8 +396,8 @@ async function applyObjectToDestination(restoreJobId, item, destination, fieldMa
       payload = stampOriginalKeyLabel(payload, originalKey);
     }
     if (item.objectType === 'workflow') {
-      try { payload = { definition: buildWorkflowRestorePayload(item.fields) }; }
-      catch (err) { return { error: 'WORKFLOW_DEFINITION_MISSING', targetId: null }; }
+      try { payload = buildWorkflowRestorePayload(item.fields); }
+      catch (err) { return { error: err.code || 'WORKFLOW_DEFINITION_MISSING', targetId: null }; }
     }
 
     const storeKey = `${restoreJobId}:${item.objectType}:${item.id}`;
@@ -425,7 +428,10 @@ async function applyObjectToDestination(restoreJobId, item, destination, fieldMa
       || (err.isAxiosError && err.response ? `JIRA_API_${err.response.status}` : 'JIRA_API_ERROR');
     const isSkip = SKIP_ONLY_CODES.has(errorCode);
     if (!isSkip) {
-      console.warn(`[restore] Failed to write ${item.objectType} id=${item.id}: ${errorCode} — ${err.message}`);
+      const itemIdStr = (item.id && typeof item.id === 'object')
+        ? (item.id.entityId || item.id.name || JSON.stringify(item.id))
+        : String(item.id);
+      console.warn(`[restore] Failed to write ${item.objectType} id=${itemIdStr}: ${errorCode} — ${err.message}`);
     }
     return { error: errorCode, skip: isSkip, targetId: null };
   }

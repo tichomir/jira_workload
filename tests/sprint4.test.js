@@ -712,7 +712,22 @@ describe('Unit — buildWorkflowRestorePayload', () => {
     expect(result).toEqual(backup.definition);
   });
 
-  test('throws WORKFLOW_DEFINITION_MISSING when definition is absent', async () => {
+  test('builds payload from raw Jira API workflow format (statuses + transitions directly)', () => {
+    const backup = {
+      id: { name: 'wf-1', entityId: 'abc-123', draft: false },
+      name: 'My Workflow',
+      description: 'A workflow',
+      statuses: [{ id: 's1', name: 'To Do' }],
+      transitions: [{ id: 't1', name: 'Start' }],
+    };
+    const result = buildWorkflowRestorePayload(backup);
+    expect(result.name).toBe('My Workflow');
+    expect(result.description).toBe('A workflow');
+    expect(result.statuses).toEqual([{ id: 's1', name: 'To Do' }]);
+    expect(result.transitions).toEqual([{ id: 't1', name: 'Start' }]);
+  });
+
+  test('throws WORKFLOW_DEFINITION_MISSING when definition is absent and no statuses/transitions', async () => {
     expect(() => buildWorkflowRestorePayload({ name: 'No Def' })).toThrow();
     try {
       buildWorkflowRestorePayload({ name: 'No Def' });
@@ -1217,8 +1232,8 @@ describe('Integration — full five-stage pipeline', () => {
 
     const restoredWf = Array.from(db.restoredObjects.values()).find(o => o.objectType === 'workflow');
     expect(restoredWf).toBeDefined();
-    // Payload should be { definition: fullDefinition }
-    expect(restoredWf.payload.definition).toEqual(fullDefinition);
+    // Payload is the full definition itself (no {definition:...} wrapper)
+    expect(restoredWf.payload).toEqual(fullDefinition);
     // No partial properties — only the full definition
     expect(restoredWf.payload.fields).toBeUndefined();
   });
