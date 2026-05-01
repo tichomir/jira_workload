@@ -110,9 +110,36 @@ async function runIntegrationBackup(integrationId) {
   connection.updatedAt = now;
   db.connections.set(integrationId, connection);
 
+  // Determine priorBackupPointId for this integration
+  const priorPoint = [...db.backupPoints.values()]
+    .filter(bp => bp.integrationId === integrationId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+
+  const backupPointId = uuidv4();
+  const totalIssues = projectResults.reduce((sum, pr) => sum + (pr.issues ? pr.issues.length : 0), 0);
+  const totalAttachments = projectResults.reduce((sum, pr) => sum + (pr.attachmentEntries ? pr.attachmentEntries.length : 0), 0);
+
+  const backupPoint = {
+    id: backupPointId,
+    integrationId,
+    createdAt: now,
+    priorBackupPointId: priorPoint ? priorPoint.id : null,
+    status: 'completed',
+    objectCounts: {
+      issues: totalIssues,
+      workflows: siteEnumResult.workflows.length,
+      customFieldDefinitions: siteEnumResult.fields.length,
+      attachments: totalAttachments,
+    },
+  };
+  db.backupPoints.set(backupPointId, backupPoint);
+  db.saveDb();
+  console.info(`[backup] Backup record persisted: jobId=${backupPointId} connectionId=${integrationId}`);
+
   return {
     integrationId,
     cloudId,
+    backupPointId,
     webhookResult,
     projectResults,
     siteEnumeration: {

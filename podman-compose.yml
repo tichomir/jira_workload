@@ -83,6 +83,17 @@ services:
   #     - app
   #   restart: unless-stopped
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "4443:4443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
 # ─── Named volumes (persisted across container restarts) ──────────────────────
 volumes:
   db_data:

@@ -176,6 +176,9 @@ async function loadBackups() {
   try {
     const res = await fetch(`/api/connections/${_connectionId}/backups`);
     const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || `HTTP ${res.status}: Failed to load backup history`);
+    }
     const points = data.backupPoints || [];
 
     qs('backups-loading').classList.add('hidden');
@@ -210,8 +213,10 @@ function renderBackups(points, total) {
       counts.customFieldDefinitions ? `${counts.customFieldDefinitions} custom fields` : null,
       counts.attachments ? `${counts.attachments} attachments` : null,
     ].filter(Boolean).join(', ') || '—';
+    const shortId = bp.id ? bp.id.split('-')[0] : '—';
 
     return `<tr>
+      <td class="font-mono text-sm" title="${escHtml(bp.id)}">${escHtml(shortId)}…</td>
       <td class="font-mono text-sm">${fmtDate(bp.createdAt)}</td>
       <td><span class="badge ${statusCls}">${escHtml(bp.status || 'completed')}</span></td>
       <td class="text-muted text-sm">${escHtml(countStr)}</td>
@@ -227,7 +232,8 @@ function renderBackups(points, total) {
     <div class="text-muted text-sm mb-8">${total} backup point${total !== 1 ? 's' : ''} total</div>
     <table class="data-table">
       <thead><tr>
-        <th>Created</th>
+        <th>Job ID</th>
+        <th>Completed</th>
         <th>Status</th>
         <th>Contents</th>
         <th>Actions</th>

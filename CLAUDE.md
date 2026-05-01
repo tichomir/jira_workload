@@ -741,3 +741,24 @@ Backup run failed: AxiosError: Request failed with status code 404
 - ✅ Add integration test for backup with mixed system and custom fields — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 2 — Backup Persistence & History Visibility Fix | 2026-05-01 | ✅ done | 14 SP
+**Goal:** So I started running now the project from the same directory where we are developing. I am connected it looks like, but when I try to backup something I get in GUI: 
+
+Backup completed
+Job a3451684-ecdd-498c-9e9a-976f8c2072bd completed at May 1, 2026, 4:30 PM
+
+Subsequently however I cannot see a single backup done, I go to browse and I don't see anything. 
+
+Also when I go here: 
+https://localhost:4443/backups.html?connectionId=fa0fd9eb-16ab-4983-a03d-732be8e92f63
+
+I don't see any backup history. 
+Investigate and fix, now you have access to all logs since I'm running locally from the development directory.
+
+**Delivered:**
+- ✅ Diagnose backup job persistence: trace job completion to storage write — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix backup record not persisted after job completion — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix backup history UI to correctly fetch and render persisted backup records — Frontend Developer (◈ Standard, 3 SP)
+- ✅ Add end-to-end regression test: backup job → persistence → history API → UI visibility — Qa Engineer (◈ Standard, 3 SP)
+
+---

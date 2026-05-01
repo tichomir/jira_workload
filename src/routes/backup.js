@@ -48,9 +48,10 @@ router.post('/:id/backup', (req, res) => {
     job.status = 'completed';
     job.completedAt = new Date().toISOString();
     job.result = result;
+    job.backupPointId = result.backupPointId || null;
     db.backupJobs.set(jobId, job);
   }).catch((err) => {
-    console.error('Backup run failed:', err);
+    console.error(`[backup] Backup run failed: jobId=${jobId} connectionId=${integrationId}`, err);
     job.status = 'failed';
     job.completedAt = new Date().toISOString();
     job.error = err.message;
