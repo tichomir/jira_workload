@@ -574,13 +574,15 @@ async function initiateRestore(restoreRequest) {
   const includeBoardSprintRestore = basketItems.some(i => i.objectType === 'board' || i.objectType === 'sprint');
 
   // Run pre-execution validation
+  console.info(`[restore] pre-validation: backupPointId=${backupPointId} targetSiteId=${targetSiteId} effectiveCloudId=${effectiveCloudId} targetProjectKey=${targetProjectKey || '(none)'} basketSize=${basketItems.length}`);
   const validationResult = runValidationPipeline({
     restoreRequest,
     targetSiteId,
-    targetProjectKey: targetProjectKey || '',
+    targetProjectKey,
     basketItems,
     includeBoardSprintRestore,
   });
+  console.info(`[restore] post-validation: passed=${validationResult.passed} warnings=${validationResult.warnings ? validationResult.warnings.length : 0}${!validationResult.passed ? ' blockingErrorCode=' + (validationResult.blockingError && validationResult.blockingError.errorCode) : ''}`);
 
   if (!validationResult.passed) {
     return {

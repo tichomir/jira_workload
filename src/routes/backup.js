@@ -413,6 +413,8 @@ router.post('/:id/restore-backup', (req, res) => {
       if (result.__validationError) {
         restoreJob.status = 'failed';
         restoreJob.error = (result.blockingError && result.blockingError.detail) || 'Pre-execution validation failed';
+        restoreJob.validationFailures = result.blockingError ? [result.blockingError] : [];
+        console.warn(`[restore] Pre-execution validation blocked restore: jobId=${jobId} errorCode=${result.blockingError && result.blockingError.errorCode} detail=${result.blockingError && result.blockingError.detail}`);
       } else if (result.__fieldMappingBlocked) {
         restoreJob.status = 'failed';
         restoreJob.error = 'Custom field mapping blocked for cross-site restore';
@@ -461,6 +463,10 @@ router.get('/:id/restore-backup/:jobId', (req, res) => {
     completedAt: job.completedAt,
     error: job.error || null,
   };
+
+  if (job.validationFailures && job.validationFailures.length > 0) {
+    resp.validationFailures = job.validationFailures;
+  }
 
   if (job.result) {
     resp.restoreJobId = job.result.restoreJobId;

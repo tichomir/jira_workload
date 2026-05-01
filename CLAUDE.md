@@ -2990,3 +2990,23 @@ These backed up... but there is no way in the world tha tI can actually browse t
 - ✅ Fix: Populate db.searchIssues so Issue Search tab returns results — Software Architect (◈ Standard, 3 SP)
 
 ---
+### Sprint 9 — Restore: Target Project Validation & Error Diagnostics | 2026-05-01 | ✅ done | 14 SP
+**Goal:** Of course restore is failing... and there is almost nothig in the logs whcih is ridiculous. I tried to restore and I see thes ein the GUI: 
+
+✖
+Restore failed
+Project not found on target site e2f3e272-f44d-4fee-a2c9-48573056d476
+
+Restore failed
+Job 106ce059-5cca-4ca5-ac77-02f6650c0688 · May 1, 2026, 10:28 PM
+Project not found on target site e2f3e272-f44d-4fee-a2c9-48573056d476
+
+Fix it !
+
+**Delivered:**
+- ✅ Diagnose and fix restore pre-execution validation for target project existence — Software Architect (◉ Deep, 5 SP)
+- ✅ Add restore job detailed error display to GUI (validation failure breakdown) — Frontend Developer (◈ Standard, 3 SP)
+- ✅ QA: end-to-end restore failure diagnostics — valid and invalid target scenarios — Qa Engineer (◈ Standard, 3 SP)
+- ✅ Fix: early-return logic for falsy targetProjectKey bypasses legitimate validation cases — Software Architect (◈ Standard, 3 SP)
+
+---

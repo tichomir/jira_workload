@@ -62,9 +62,30 @@ function checkOAuthTokenValidity(targetSiteId) {
 
 // ── Check 2: Target Project Existence ─────────────────────────────────────────
 
-function checkTargetProjectExistence(targetProjectKey, targetSiteId) {
+function checkTargetProjectExistence(targetProjectKey, targetSiteId, restoreMode) {
   const CHECK_ID = VALIDATION_CHECK_TYPE.TARGET_PROJECT_EXISTENCE;
   const CHECK_NAME = 'Target Project Existence';
+
+  // For "original" destination restores, each issue carries its own project key
+  // from backup fields (fields.project.key). No single targetProjectKey is specified
+  // at the restore request level, so skip this check — the individual write calls
+  // will resolve the project per-item.
+  // For "export" destination restores, data is written to a local archive file and
+  // never sent to a Jira site, so no target project is required.
+  // NOTE: we check restoreMode explicitly rather than using !targetProjectKey, because
+  // a missing targetProjectKey on a non-original/non-export destination is a
+  // misconfiguration that should be caught, not silently passed.
+  if (restoreMode === 'original' || restoreMode === 'export') {
+    return makeCheckResult(CHECK_ID, CHECK_NAME, true, true);
+  }
+
+  if (!targetProjectKey) {
+    return makeCheckResult(
+      CHECK_ID, CHECK_NAME, false, true,
+      'TARGET_PROJECT_KEY_MISSING',
+      'No target project key provided for restore destination',
+    );
+  }
 
   let found = false;
   for (const [key, project] of db.projectNodes.entries()) {
@@ -268,37 +289,52 @@ function checkAttachmentSize(basketItems) {
 function runValidationPipeline({ restoreRequest, targetSiteId, targetProjectKey, basketItems, includeBoardSprintRestore }) {
   const warnings = [];
 
+  // Derive restoreMode from the destination type so that check2 can distinguish
+  // an intentional per-issue project routing (destination.type === 'original') from
+  // a misconfigured request that accidentally omitted targetProjectKey.
+  const restoreMode = restoreRequest && restoreRequest.destination && restoreRequest.destination.type;
+
+  console.info(`[validation] starting: targetSiteId=${targetSiteId} targetProjectKey=${targetProjectKey || '(none)'} restoreMode=${restoreMode || '(none)'} basketSize=${basketItems.length}`);
+
   // Check 1: OAuth token validity
   const check1 = checkOAuthTokenValidity(targetSiteId);
+  console.info(`[validation] check=OAUTH_TOKEN_VALIDITY passed=${check1.passed} targetSiteId=${targetSiteId}${check1.errorCode ? ' errorCode=' + check1.errorCode : ''}`);
   if (!check1.passed) return { passed: false, blockingError: check1, warnings };
 
   // Check 2: Target project existence
-  const check2 = checkTargetProjectExistence(targetProjectKey, targetSiteId);
+  const check2 = checkTargetProjectExistence(targetProjectKey, targetSiteId, restoreMode);
+  console.info(`[validation] check=TARGET_PROJECT_EXISTENCE passed=${check2.passed} targetProjectKey=${targetProjectKey || '(none)'} targetSiteId=${targetSiteId}${check2.errorCode ? ' errorCode=' + check2.errorCode : ''}`);
   if (!check2.passed) return { passed: false, blockingError: check2, warnings };
 
   // Check 3: Target project archive status
   const check3 = checkTargetProjectArchiveStatus(targetProjectKey, targetSiteId);
+  console.info(`[validation] check=TARGET_PROJECT_ARCHIVE_STATUS passed=${check3.passed} targetProjectKey=${targetProjectKey || '(none)'}${check3.errorCode ? ' errorCode=' + check3.errorCode : ''}`);
   if (!check3.passed) return { passed: false, blockingError: check3, warnings };
 
   // Check 4: Jira Software active (only for Board/Sprint restores)
   if (includeBoardSprintRestore) {
     const check4 = checkJiraSoftwareActive(targetSiteId);
+    console.info(`[validation] check=JIRA_SOFTWARE_ACTIVE passed=${check4.passed} targetSiteId=${targetSiteId}${check4.errorCode ? ' errorCode=' + check4.errorCode : ''}`);
     if (!check4.passed) return { passed: false, blockingError: check4, warnings };
   }
 
   // Check 5: Workflow status names (non-blocking)
   const check5 = checkWorkflowStatusNames(basketItems);
+  console.info(`[validation] check=WORKFLOW_STATUS_NAMES passed=${check5.passed} warnings=${!check5.passed}`);
   if (!check5.passed) warnings.push(check5);
 
   // Check 6: Custom field presence (blocking for required, non-blocking for optional)
   const { requiredResult, optionalResult } = checkCustomFieldPresence(basketItems, targetSiteId);
+  console.info(`[validation] check=CUSTOM_FIELD_PRESENCE_REQUIRED passed=${requiredResult.passed}${requiredResult.errorCode ? ' errorCode=' + requiredResult.errorCode : ''}`);
   if (!requiredResult.passed) return { passed: false, blockingError: requiredResult, warnings };
   if (!optionalResult.passed) warnings.push(optionalResult);
 
   // Check 7: Attachment size (blocking)
   const check7 = checkAttachmentSize(basketItems);
+  console.info(`[validation] check=ATTACHMENT_SIZE passed=${check7.passed}${check7.errorCode ? ' errorCode=' + check7.errorCode : ''}`);
   if (!check7.passed) return { passed: false, blockingError: check7, warnings };
 
+  console.info(`[validation] all checks passed: targetSiteId=${targetSiteId} warnings=${warnings.length}`);
   return { passed: true, warnings };
 }
 

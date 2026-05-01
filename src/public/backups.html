@@ -68,6 +68,7 @@
     <div class="banner-body">
       <div class="banner-title" id="restore-title"></div>
       <div class="banner-msg" id="restore-msg"></div>
+      <div id="restore-failures" style="display:none;margin-top:8px"></div>
     </div>
     <button class="banner-close" onclick="hideRestoreBanner()">×</button>
   </div>
@@ -288,6 +289,21 @@ function updateProgressPanel(progress) {
   }
 }
 
+// ── Render validation failure rows ────────────────────────────────────────
+function renderValidationFailures(failures) {
+  if (!failures || !failures.length) return '';
+  const rows = failures.map(f => {
+    const label = escHtml(f.checkName || f.errorCode || 'Validation check');
+    const detail = escHtml(f.detail || f.errorCode || '');
+    const code = f.errorCode ? `<span style="font-size:10px;font-family:'SFMono-Regular',Consolas,monospace;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--text-muted);margin-left:6px">${escHtml(f.errorCode)}</span>` : '';
+    return `<div style="display:flex;align-items:baseline;gap:4px;margin-top:4px">
+      <span style="font-size:12px;font-weight:600;color:var(--danger);min-width:4px">›</span>
+      <span style="font-size:12px"><strong>${label}</strong>${code}${detail ? `<span style="color:var(--text-muted);margin-left:4px">— ${detail}</span>` : ''}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:6px;border-top:1px solid rgba(0,0,0,.06);padding-top:6px">${rows}</div>`;
+}
+
 // ── Show summary card on terminal state ────────────────────────────────────
 function showJobSummaryCard(job, progress, isRestore) {
   stopElapsedTimer();
@@ -332,12 +348,17 @@ function showJobSummaryCard(job, progress, isRestore) {
       </div>`
     : '';
 
+  const failuresHtml = (!succeeded && isRestore && job.validationFailures && job.validationFailures.length)
+    ? renderValidationFailures(job.validationFailures)
+    : '';
+
   card.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;padding:4px 0">
     <span style="font-size:24px;color:${color};background:${bg};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon}</span>
     <div style="flex:1">
       <div style="font-weight:700;font-size:15px;color:${color}">${typeLabel} ${succeeded ? 'completed' : 'failed'}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job ${escHtml(job.jobId || job.id || '')} · ${fmtDate(job.completedAt)}</div>
       ${job.error && !succeeded ? `<div style="margin-top:6px;font-size:13px;color:var(--danger)">${escHtml(job.error)}</div>` : ''}
+      ${failuresHtml}
       ${bpIdHtml}
       ${detailHtml}
     </div>
@@ -634,23 +655,36 @@ function pollRestoreJob(jobId) {
         showJobSummaryCard(job, _lastRestoreProgress, true);
         _lastRestoreProgress = null;
         if (job.status !== 'complete') {
-          showRestoreBanner('error', 'Restore failed', job.error || `Job ended with status: ${job.status}`);
+          showRestoreBanner('error', 'Restore failed', job.error || `Job ended with status: ${job.status}`, job.validationFailures);
         }
       }
     } catch (_) { /* ignore poll errors */ }
   }, 3000);
 }
 
-function showRestoreBanner(type, title, msg) {
+function showRestoreBanner(type, title, msg, failures) {
   const banner = qs('banner-restore');
   const cls = type === 'success' ? 'success' : type === 'info' ? 'info' : 'error';
   banner.className = `banner banner-${cls}`;
   qs('restore-icon').textContent = type === 'success' ? '✔' : type === 'info' ? '…' : '✖';
   qs('restore-title').textContent = title;
   qs('restore-msg').textContent = msg;
+  const failuresEl = qs('restore-failures');
+  if (failures && failures.length) {
+    failuresEl.innerHTML = renderValidationFailures(failures);
+    failuresEl.style.display = '';
+  } else {
+    failuresEl.innerHTML = '';
+    failuresEl.style.display = 'none';
+  }
   banner.classList.remove('hidden');
 }
-function hideRestoreBanner() { qs('banner-restore').classList.add('hidden'); }
+function hideRestoreBanner() {
+  qs('banner-restore').classList.add('hidden');
+  const failuresEl = qs('restore-failures');
+  failuresEl.innerHTML = '';
+  failuresEl.style.display = 'none';
+}
 
 // Stop all polling and timers on page unload to prevent memory leaks
 window.addEventListener('beforeunload', () => {
