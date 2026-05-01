@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All Backups — Jira Workload</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .bp-id-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+    }
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      cursor: pointer;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: background .1s, color .1s;
+    }
+    .copy-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+    .copy-btn.copied { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+    .obj-summary { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+    .obj-summary span { white-space: nowrap; }
+    .filter-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-bar .form-input, .filter-bar .form-select { max-width: 200px; }
+    .load-more-row { text-align: center; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="/" class="topnav-brand">Jira Workload</a>
+    <div class="topnav-links">
+      <a href="/index.html" class="topnav-link">Home</a>
+      <a href="/connections.html" class="topnav-link">Integrations</a>
+      <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/all-backups.html" class="topnav-link active">All Backups</a>
+      <a href="/browse.html" class="topnav-link">Browse</a>
+      <a href="/resilience.html" class="topnav-link">Resilience</a>
+      <a href="/sdi.html" class="topnav-link">SDI</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+    <div>
+      <h1>All Backups</h1>
+      <p class="text-muted text-sm">All backup points across every integration — newest first. Click Browse to explore a backup point's contents.</p>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="card" style="margin-bottom:16px;padding:14px 20px">
+    <div class="filter-bar">
+      <div>
+        <label class="form-label" for="filter-connection" style="margin-bottom:4px">Filter by Integration</label>
+        <select id="filter-connection" class="form-select" onchange="applyFilter()" style="max-width:260px">
+          <option value="">All integrations</option>
+        </select>
+      </div>
+      <div style="align-self:flex-end">
+        <button class="btn btn-secondary btn-sm" onclick="resetFilter()">Clear filter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main card -->
+  <div class="card" id="backups-card">
+    <div class="card-title">Backup Points</div>
+    <div id="backups-loading" class="loading">
+      <div class="spinner"></div>
+      <span>Loading backups…</span>
+    </div>
+    <div id="backups-empty" class="empty-state hidden">
+      <div class="empty-state-icon">💾</div>
+      <h3>No backups yet</h3>
+      <p>Trigger a backup from any integration to protect your Jira data.</p>
+      <a href="/connections.html" class="btn btn-primary">Go to Integrations</a>
+    </div>
+    <div id="backups-error" class="hidden" style="color:var(--danger);padding:12px 0"></div>
+    <div id="backups-body" class="hidden">
+      <div class="text-muted text-sm mb-8" id="backups-count"></div>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="backups-table">
+          <thead>
+            <tr>
+              <th style="min-width:220px">Backup Point ID</th>
+              <th>Integration</th>
+              <th>Date / Time</th>
+              <th>Status</th>
+              <th style="min-width:160px">Object Summary</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="backups-tbody"></tbody>
+        </table>
+      </div>
+      <div class="load-more-row" id="load-more-row" style="display:none">
+        <button class="btn btn-secondary" onclick="loadMore()">Load more</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const API = '/api/v1';
+let _allRows = [];
+let _nextCursor = null;
+let _filterConnectionId = '';
+let _connectionNames = {};
+
+function qs(id) { return document.getElementById(id); }
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return iso; }
+}
+
+function shortId(id) {
+  if (!id) return '—';
+  return id.length > 18 ? id.slice(0, 8) + '…' + id.slice(-4) : id;
+}
+
+async function copyToClipboard(text, btnEl) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btnEl.textContent = 'Copied!';
+    btnEl.classList.add('copied');
+    setTimeout(() => {
+      btnEl.textContent = 'Copy';
+      btnEl.classList.remove('copied');
+    }, 1500);
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btnEl.textContent = 'Copied!';
+    btnEl.classList.add('copied');
+    setTimeout(() => {
+      btnEl.textContent = 'Copy';
+      btnEl.classList.remove('copied');
+    }, 1500);
+  }
+}
+
+function renderObjectSummary(objectCounts) {
+  if (!objectCounts) return '<span class="text-muted text-sm" style="font-style:italic">—</span>';
+  const keys = ['issues','projects','workflows','customFields','boards','sprints','attachments'];
+  const labels = { issues:'Issues', projects:'Projects', workflows:'Workflows', customFields:'Custom Fields', boards:'Boards', sprints:'Sprints', attachments:'Attachments' };
+  const parts = keys
+    .filter(k => objectCounts[k] > 0)
+    .map(k => `<span>${escHtml(labels[k])}: <strong>${objectCounts[k]}</strong></span>`);
+  if (!parts.length) return '<span class="text-muted text-sm">0 objects</span>';
+  return `<div class="obj-summary" style="display:flex;flex-wrap:wrap;gap:4px 10px">${parts.join('')}</div>`;
+}
+
+function renderRow(bp) {
+  const id = bp.backupPointId || bp.id || '';
+  const statusMap = {
+    completed: 'badge-active',
+    complete: 'badge-active',
+    running: 'badge-degraded',
+    failed: 'badge-deleted',
+  };
+  const statusCls = statusMap[bp.status] || 'badge-deleted';
+  const siteName = bp.siteName || bp.integrationId || '—';
+  const ts = bp.completedAt || bp.createdAt || '';
+
+  const objHtml = renderObjectSummary(bp.objectCounts);
+  const connId = bp.integrationId || '';
+  const browseUrl = `/browse.html?backupPointId=${encodeURIComponent(id)}&connectionId=${encodeURIComponent(connId)}&tab=explorer`;
+
+  return `<tr>
+    <td>
+      <div class="bp-id-cell">
+        <span title="${escHtml(id)}" style="overflow:hidden;text-overflow:ellipsis;max-width:160px;white-space:nowrap">${escHtml(shortId(id))}</span>
+        <button class="copy-btn" onclick="copyToClipboard('${escHtml(id)}', this)" title="Copy full Backup Point ID">Copy</button>
+      </div>
+    </td>
+    <td class="text-sm">
+      <a href="/backups.html?connectionId=${encodeURIComponent(bp.integrationId || '')}" class="text-link" title="${escHtml(bp.integrationId || '')}">${escHtml(siteName)}</a>
+    </td>
+    <td class="text-sm">${escHtml(fmtDate(ts))}</td>
+    <td><span class="badge ${statusCls}">${escHtml(bp.status || 'completed')}</span></td>
+    <td>${objHtml}</td>
+    <td class="actions">
+      <a href="${escHtml(browseUrl)}" class="btn btn-sm btn-primary" title="Explore this backup point in the Object Explorer">Browse</a>
+    </td>
+  </tr>`;
+}
+
+function renderRows(rows) {
+  qs('backups-tbody').innerHTML = rows.map(renderRow).join('');
+}
+
+async function loadBackups(cursor) {
+  if (!cursor) {
+    qs('backups-loading').classList.remove('hidden');
+    qs('backups-body').classList.add('hidden');
+    qs('backups-empty').classList.add('hidden');
+    qs('backups-error').classList.add('hidden');
+    _allRows = [];
+  }
+
+  try {
+    const params = new URLSearchParams({ limit: '50' });
+    if (_filterConnectionId) params.set('connectionId', _filterConnectionId);
+    if (cursor) params.set('cursor', cursor);
+
+    const res = await fetch(`/api/backups?${params}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+    const rows = data.backupPoints || [];
+    _allRows = cursor ? [..._allRows, ...rows] : rows;
+    _nextCursor = data.nextCursor || null;
+
+    qs('backups-loading').classList.add('hidden');
+
+    if (_allRows.length === 0) {
+      qs('backups-empty').classList.remove('hidden');
+      return;
+    }
+
+    qs('backups-count').textContent = `${data.total || _allRows.length} backup point${(data.total || _allRows.length) !== 1 ? 's' : ''} total`;
+    renderRows(_allRows);
+    qs('backups-body').classList.remove('hidden');
+
+    const lmRow = qs('load-more-row');
+    lmRow.style.display = _nextCursor ? '' : 'none';
+
+  } catch (e) {
+    qs('backups-loading').classList.add('hidden');
+    qs('backups-error').classList.remove('hidden');
+    qs('backups-error').textContent = `Failed to load backups: ${e.message}`;
+  }
+}
+
+async function loadConnections() {
+  try {
+    const res = await fetch('/api/connections');
+    const data = await res.json();
+    const connections = data.connections || [];
+    const sel = qs('filter-connection');
+    for (const c of connections) {
+      _connectionNames[c.connectionId] = c.siteName || c.siteUrl || c.connectionId;
+      const opt = document.createElement('option');
+      opt.value = c.connectionId;
+      opt.textContent = c.siteName || c.siteUrl || c.connectionId;
+      sel.appendChild(opt);
+    }
+  } catch {
+    // non-fatal — filter just won't be populated
+  }
+}
+
+function applyFilter() {
+  _filterConnectionId = qs('filter-connection').value;
+  loadBackups();
+}
+
+function resetFilter() {
+  qs('filter-connection').value = '';
+  _filterConnectionId = '';
+  loadBackups();
+}
+
+function loadMore() {
+  if (_nextCursor) loadBackups(_nextCursor);
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  // Pre-select connection filter from URL if provided
+  const params = new URLSearchParams(window.location.search);
+  const connId = params.get('connectionId');
+  if (connId) {
+    _filterConnectionId = connId;
+  }
+
+  await loadConnections();
+
+  if (connId) {
+    qs('filter-connection').value = connId;
+  }
+
+  await loadBackups();
+});
+</script>
+</body>
+</html>

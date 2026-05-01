@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * Sprint 3 — Backup Point Routes
+ * Backup Point Routes
  *
  * Endpoints:
+ *   GET /api/v1/backup-points                         — Global list of all backup points (paginated)
  *   GET /api/v1/backup-points/:backupPointId/issues   — Issue search within a backup point
  *   GET /api/v1/backup-points/:backupPointId/objects  — Object Explorer diff results
  */
@@ -31,6 +32,67 @@ function errorResponse(res, status, code, message, fields) {
 }
 
 const VALID_STATUS_CATEGORIES = new Set(['To Do', 'In Progress', 'Done']);
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/backup-points
+// Global paginated list of all backup points across all integrations.
+// Query params: limit (default 20, max 100), cursor, connectionId (optional filter)
+// ---------------------------------------------------------------------------
+router.get('/', (req, res) => {
+  const connectionId = req.query.connectionId || null;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+  const cursor = req.query.cursor || null;
+
+  // Build a lookup: backupPointId → job that produced it
+  const jobByBackupPointId = new Map();
+  for (const job of db.backupJobs.values()) {
+    if (job.backupPointId && !jobByBackupPointId.has(job.backupPointId)) {
+      jobByBackupPointId.set(job.backupPointId, job);
+    }
+  }
+
+  // Collect and optionally filter backup points
+  const all = [];
+  for (const bp of db.backupPoints.values()) {
+    if (connectionId && bp.integrationId !== connectionId) continue;
+    const connection = db.connections.get(bp.integrationId);
+    const siteName = (connection && (connection.siteName || connection.siteUrl)) || bp.integrationId;
+    const connectionStatus = connection ? connection.status : 'unknown';
+    const job = jobByBackupPointId.get(bp.id) || null;
+    all.push({
+      backupPointId: bp.id,
+      id: bp.id,
+      integrationId: bp.integrationId,
+      siteName,
+      connectionStatus,
+      jobId: job ? job.id : null,
+      startedAt: job ? (job.triggeredAt || bp.createdAt) : bp.createdAt,
+      completedAt: job ? job.completedAt : bp.createdAt,
+      createdAt: bp.createdAt,
+      status: bp.status || (job ? job.status : 'completed'),
+      objectCounts: bp.objectCounts || null,
+      priorBackupPointId: bp.priorBackupPointId || null,
+    });
+  }
+
+  // Sort newest first
+  all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Cursor-based pagination
+  let startIdx = 0;
+  if (cursor) {
+    const idx = all.findIndex(p => p.backupPointId === cursor);
+    if (idx !== -1) startIdx = idx + 1;
+  }
+  const page = all.slice(startIdx, startIdx + limit);
+  const nextCursor = startIdx + limit < all.length ? page[page.length - 1].backupPointId : null;
+
+  return res.status(200).json({
+    backupPoints: page,
+    total: all.length,
+    nextCursor,
+  });
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/backup-points/:backupPointId/issues

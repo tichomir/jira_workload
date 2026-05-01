@@ -15,6 +15,7 @@
       <a href="/index.html" class="topnav-link">Home</a>
       <a href="/connections.html" class="topnav-link">Integrations</a>
       <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/all-backups.html" class="topnav-link">All Backups</a>
       <a href="/browse.html" class="topnav-link">Browse</a>
       <a href="/resilience.html" class="topnav-link">Resilience</a>
       <a href="/sdi.html" class="topnav-link">SDI</a>
@@ -321,12 +322,23 @@ function showJobSummaryCard(job, progress, isRestore) {
     </div>`;
   }
 
+  const backupPointId = job.backupPointId || null;
+  const bpIdHtml = (!isRestore && succeeded && backupPointId)
+    ? `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Backup Point ID</span>
+        <code id="summary-bp-id" style="font-size:12px;font-family:'SFMono-Regular',Consolas,monospace;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;word-break:break-all">${escHtml(backupPointId)}</code>
+        <button onclick="copySummaryBpId()" id="btn-copy-bp-id" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 10px;font-size:11px;cursor:pointer;color:var(--text-muted)">Copy</button>
+        <a href="/browse.html?backupPointId=${encodeURIComponent(backupPointId)}&tab=explorer" class="btn btn-sm btn-secondary" style="font-size:11px">Browse this backup</a>
+      </div>`
+    : '';
+
   card.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;padding:4px 0">
     <span style="font-size:24px;color:${color};background:${bg};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon}</span>
     <div style="flex:1">
       <div style="font-weight:700;font-size:15px;color:${color}">${typeLabel} ${succeeded ? 'completed' : 'failed'}</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job ${job.jobId || job.id || ''} · ${fmtDate(job.completedAt)}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job ${escHtml(job.jobId || job.id || '')} · ${fmtDate(job.completedAt)}</div>
       ${job.error && !succeeded ? `<div style="margin-top:6px;font-size:13px;color:var(--danger)">${escHtml(job.error)}</div>` : ''}
+      ${bpIdHtml}
       ${detailHtml}
     </div>
   </div>`;
@@ -428,16 +440,25 @@ function renderBackups(points, total) {
 
   const rows = points.map(bp => {
     const statusCls = bp.status === 'completed' ? 'badge-active' : bp.status === 'running' ? 'badge-degraded' : 'badge-deleted';
-    const shortId = bp.id ? bp.id.split('-')[0] : '—';
+    const fullId = bp.id || '—';
+    const displayId = fullId.length > 18 ? fullId.slice(0, 8) + '…' + fullId.slice(-4) : fullId;
     const detailHtml = renderObjectCountsTable(bp.objectCounts);
+    const safeId = escHtml(fullId);
+    const browseUrl = `/browse.html?backupPointId=${encodeURIComponent(fullId)}&tab=explorer`;
 
     return `<tr>
-      <td class="font-mono text-sm" title="${escHtml(bp.id)}">${escHtml(shortId)}…</td>
-      <td class="font-mono text-sm">${fmtDate(bp.createdAt)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px">
+          <span title="${safeId}" style="overflow:hidden;text-overflow:ellipsis;max-width:140px;white-space:nowrap">${escHtml(displayId)}</span>
+          <button class="btn btn-sm" style="padding:1px 7px;font-size:10px;background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--text-muted)" onclick="copyBpId(this,'${safeId}')" title="Copy Backup Point ID">Copy</button>
+        </div>
+      </td>
+      <td class="text-sm">${fmtDate(bp.createdAt)}</td>
       <td><span class="badge ${statusCls}">${escHtml(bp.status || 'completed')}</span></td>
       <td>${detailHtml}</td>
       <td class="actions">
-        <button class="btn btn-sm btn-secondary" onclick="openRestoreModal('${escHtml(bp.id)}', '${escHtml(bp.createdAt)}')">
+        <a href="${escHtml(browseUrl)}" class="btn btn-sm btn-primary" title="Explore this backup point">Browse</a>
+        <button class="btn btn-sm btn-secondary" onclick="openRestoreModal('${safeId}', '${escHtml(bp.createdAt)}')">
           Restore
         </button>
       </td>
@@ -448,7 +469,7 @@ function renderBackups(points, total) {
     <div class="text-muted text-sm mb-8">${total} backup point${total !== 1 ? 's' : ''} total</div>
     <table class="data-table">
       <thead><tr>
-        <th>Job ID</th>
+        <th>Backup Point ID</th>
         <th>Completed</th>
         <th>Status</th>
         <th>Contents</th>
@@ -518,6 +539,36 @@ function showTriggerBanner(type, title, msg) {
   banner.classList.remove('hidden');
 }
 function hideTriggerBanner() { qs('banner-trigger').classList.add('hidden'); }
+
+async function copyBpId(btnEl, id) {
+  try { await navigator.clipboard.writeText(id); } catch {
+    const ta = document.createElement('textarea');
+    ta.value = id; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  const orig = btnEl.textContent;
+  btnEl.textContent = '✔';
+  btnEl.style.color = 'var(--success)';
+  setTimeout(() => { btnEl.textContent = orig; btnEl.style.color = ''; }, 1500);
+}
+
+async function copySummaryBpId() {
+  const code = qs('summary-bp-id');
+  const btn = qs('btn-copy-bp-id');
+  if (!code || !btn) return;
+  const text = code.textContent;
+  try { await navigator.clipboard.writeText(text); } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.textContent = 'Copied!';
+  btn.style.color = 'var(--success)';
+  btn.style.borderColor = 'var(--success)';
+  setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
+}
 
 /* ── Restore ── */
 function openRestoreModal(backupPointId, createdAt) {

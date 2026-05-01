@@ -195,6 +195,7 @@
       <a href="/index.html" class="topnav-link">Home</a>
       <a href="/connections.html" class="topnav-link">Integrations</a>
       <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/all-backups.html" class="topnav-link">All Backups</a>
       <a href="/browse.html" class="topnav-link active">Browse</a>
       <a href="/resilience.html" class="topnav-link">Resilience</a>
       <a href="/sdi.html" class="topnav-link">SDI</a>
@@ -1406,6 +1407,54 @@ function resetExplorer() {
 /* ─── Bootstrap ────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', () => {
   loadShowUnchangedPref();
+
+  // If URL contains ?backupPointId=... (and optionally ?connectionId=... ?tab=explorer),
+  // pre-populate the Object Explorer and activate that tab — allows deep-linking from
+  // the All Backups list.
+  const urlParams = new URLSearchParams(window.location.search);
+  const bpId = urlParams.get('backupPointId');
+  const connectionId = urlParams.get('connectionId');
+  const tab = urlParams.get('tab');
+
+  if (bpId) {
+    // Populate Object Explorer backup-id field
+    const oeInput = qs('oe-backup-id');
+    if (oeInput) oeInput.value = bpId;
+
+    // Also populate issue search backup-id if present
+    const issueInput = qs('issue-backup-id');
+    if (issueInput && !issueInput.value) issueInput.value = bpId;
+
+    // If a connectionId was provided, show a context banner so the user knows
+    // which integration this backup belongs to.
+    if (connectionId) {
+      const banner = document.createElement('div');
+      banner.id = 'deeplink-context-banner';
+      banner.style.cssText = 'background:var(--primary-light);border:1px solid var(--primary);border-radius:var(--radius);padding:8px 14px;margin-bottom:16px;font-size:13px;color:var(--primary);display:flex;align-items:center;justify-content:space-between;gap:10px';
+      banner.innerHTML = '<span>Browsing backup point <strong>' + escHtml(bpId) + '</strong> \u2014 <a href="/backups.html?connectionId=' + encodeURIComponent(connectionId) + '" class="text-link" style="color:var(--primary)">View all backups for this integration</a></span><button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1;color:var(--primary)" title="Dismiss">&times;</button>';
+      const container = document.querySelector('.container');
+      if (container) {
+        container.insertBefore(banner, container.firstElementChild);
+      }
+    }
+
+    // Activate the Object Explorer tab (either because tab=explorer was specified
+    // or because we got a backupPointId without a tab — default to explorer)
+    const targetTab = (tab === 'explorer' || !tab) ? 'explorer' : tab;
+    activateTab(targetTab);
+
+    // If landing on the explorer tab, auto-trigger the data load so the user
+    // doesn't have to manually press Explore.  Requires a node type — honour the
+    // URL param if supplied, otherwise default to JiraProjectNode.
+    if (targetTab === 'explorer') {
+      const nodeTypeSelect = qs('oe-node-type');
+      if (nodeTypeSelect && !nodeTypeSelect.value) {
+        const urlNodeType = urlParams.get('nodeType');
+        nodeTypeSelect.value = urlNodeType || 'JiraProjectNode';
+      }
+      searchObjects();
+    }
+  }
 });
 </script>
 </body>

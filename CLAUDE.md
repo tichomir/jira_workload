@@ -2953,3 +2953,20 @@ Unresolved
 - ✅ Fix: pre-existing sprint6.test.js pagination test failure — Backend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 7 — Backup Point ID Discoverability & Explorer Integration | 2026-05-01 | ✅ done | 22 SP
+**Goal:** I cannot easily find Backup Point IDs
+When I create a backup I see only Jonb ID and even not the full one. I don't have other details. 
+when I got Browse the experience is not intuitive... I can't undersatnd what I can do there. Maybe you need to provide options, sugggestions I am not sure. But the Backup Object ID seams to be curcial. 
+There is no good way to see list of all available backups. only  through integrations whcih is nonsense. 
+I would expect when when I see list of backups and clikc on one of them to be pointed directly into the explorer or object explorer somehow connected experience. no only manual search.
+
+**Delivered:**
+- ✅ Design Backup Point ID display and Backups list UX — Software Architect (⚡ Quick, 2 SP)
+- ✅ Expose full Backup Point ID in job completion API response — Backend Developer (◈ Standard, 3 SP)
+- ✅ Build Backups List screen and wire Backup Point ID display on job completion — Frontend Developer (◉ Deep, 5 SP)
+- ✅ QA: Backup Point ID visibility, Backups List, and Explorer deep-link — Qa Engineer (◈ Standard, 3 SP)
+- ✅ Fix: Summary output truncated — verify backupPointId field consistency and alias mount correctness — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: browse.html auto-populate should trigger Object Explorer load after setting backupPointId — Frontend Developer (◈ Standard, 3 SP)
+- ✅ Fix: all-backups.html Browse button must pass connectionId or integrationId alongside backupPointId for browse.html to correctly scope the Object Explorer request — Frontend Developer (◈ Standard, 3 SP)
+
+---

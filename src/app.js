@@ -64,6 +64,7 @@ app.get('/api/v1/jobs/:jobId/progress', (req, res) => {
 // Also mount at /api/ (without v1) for acceptance criteria compatibility
 app.use('/api/search', searchRouter);
 app.use('/api/backup-points', backupPointsRouter);
+app.use('/api/backups', backupPointsRouter);
 app.use('/api/preferences', preferencesRouter);
 app.use('/api/sdi', sdiRouter);
 
