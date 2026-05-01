@@ -105,7 +105,16 @@ async function enumerateCustomFields(cloudId, accessToken) {
 async function enumerateCustomFieldContexts(cloudId, accessToken, fieldId, fieldType) {
   const ctxUrl = `${JIRA_API_BASE}/${cloudId}/rest/api/3/field/${fieldId}/context`;
   const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' };
-  const contexts = await paginateWithIsLast(ctxUrl, headers, CONTEXT_PAGE_SIZE);
+  let contexts;
+  try {
+    contexts = await paginateWithIsLast(ctxUrl, headers, CONTEXT_PAGE_SIZE);
+  } catch (err) {
+    if (err.isAxiosError && err.response && err.response.status === 404) {
+      console.debug(`[siteObjectEnumeration] Skipping context enumeration for field ${fieldId}: 404 Not Found (system field or no context endpoint)`);
+      return [];
+    }
+    throw err;
+  }
   const contextNodes = [];
 
   // Enumerate options concurrently with max concurrency 5
@@ -158,10 +167,12 @@ async function runSiteEnumeration(cloudId, accessToken) {
     enumerateCustomFields(cloudId, accessToken),
   ]);
 
-  // Step 3: contexts enumerated per field (gated on step 2 completion)
+  // Step 3: contexts enumerated per custom field only (gated on step 2 completion)
+  // System fields (those without 'customfield_' prefix) do not support the /context endpoint
+  const customFields = fields.filter((field) => field.id && field.id.startsWith('customfield_'));
   const allContextNodes = [];
-  for (let i = 0; i < fields.length; i += CONTEXT_OPTIONS_CONCURRENCY) {
-    const chunk = fields.slice(i, i + CONTEXT_OPTIONS_CONCURRENCY);
+  for (let i = 0; i < customFields.length; i += CONTEXT_OPTIONS_CONCURRENCY) {
+    const chunk = customFields.slice(i, i + CONTEXT_OPTIONS_CONCURRENCY);
     const results = await Promise.all(
       chunk.map((field) => {
         const fieldType = (field.schema && field.schema.type) || null;
