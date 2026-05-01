@@ -2,7 +2,7 @@
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-blue)
-![Docker](https://img.shields.io/badge/docker-required-blue)
+![Podman](https://img.shields.io/badge/podman-rootless-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 
@@ -31,7 +31,11 @@ Atlassian OAuth 2.0 (3LO) and provides:
 
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (macOS, Windows) or Docker Engine + Compose plugin (Linux)
+- **Podman** (rootless, no daemon required) + **podman-compose**
+  - macOS: `brew install podman podman-compose && podman machine init && podman machine start`
+  - Fedora/RHEL: `sudo dnf install -y podman podman-compose`
+  - Debian/Ubuntu: `sudo apt-get install -y podman && pip install podman-compose`
+  - Windows: install [Podman Desktop](https://podman-desktop.io) **or** run from a WSL2 terminal with Podman installed
 - An [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/) OAuth 2.0 (3LO) app
 
 ### 1. Clone and configure
@@ -58,7 +62,7 @@ OAUTH_TOKEN_ENCRYPTION_KEY=<64-hex-chars>   # openssl rand -hex 32
 | macOS / Linux | `./start.sh` |
 | Windows (PowerShell) | `.\start.ps1` |
 | Windows (CMD) | `start.bat` |
-| Manual | `docker compose up --build` |
+| Manual | `podman-compose -f podman-compose.yml up --build` |
 
 The application starts at **http://localhost:4000**.
 
@@ -72,19 +76,36 @@ The application starts at **http://localhost:4000**.
 
 ---
 
+## How It Works
+
+Want to understand what jira_workload does under the hood — how backup jobs flow,
+what the restore pipeline does, how Podman fits in, and what "purge-protected" means?
+
+**[Read the Architecture Overview →](docs/ARCHITECTURE.md)**
+
+It covers:
+- What the platform does and why
+- How the major components interact (OAuth, backup engine, restore engine, SDI, Resilience Module)
+- End-to-end data flow diagrams (backup and restore paths)
+- Key concepts: backup points, conflict modes, purge cascade boundary, protected objects
+- Deployment topology: what runs locally in Podman vs. what is in Atlassian cloud
+
+---
+
 ## Documentation
 
 | Document | Description |
 |---|---|
+| [Architecture Overview](docs/ARCHITECTURE.md) | How it works: components, data flows, key concepts, deployment |
 | [Installation Guide](docs/INSTALLATION.md) | Detailed setup for all platforms |
 | [User Guide](docs/USER_GUIDE.md) | How to use every feature |
 | [Demo Walkthrough](docs/DEMO.md) | Step-by-step demo with sample payloads |
 | [OAuth Setup](OAUTH_SETUP.md) | Atlassian OAuth configuration reference |
-| [Architecture](docs/architecture/) | Per-sprint architecture decision records |
+| [Architecture ADRs](docs/architecture/) | Per-sprint architecture decision records |
 
 ---
 
-## Development (without Docker)
+## Development (without Podman / local Node.js)
 
 ```bash
 # Install dependencies

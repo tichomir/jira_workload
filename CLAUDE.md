@@ -237,3 +237,14 @@ Deliverables:
 - ✅ Produce DEMO script and record demo assets — Frontend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 8 | 2026-05-01 | ✅ done | 13 SP
+**Goal:** * Replace docker with podman
+* Add a user-facing architectural document that would explain how it everything works.
+
+**Delivered:**
+- ✅ Define Podman migration constants and compose config — Devops Engineer (⚡ Quick, 2 SP)
+- ✅ Implement cross-platform Podman deployment and replace Docker runtime — Devops Engineer (◉ Deep, 5 SP)
+- ✅ Write user-facing architectural overview document — Software Architect (◈ Standard, 3 SP)
+- ✅ QA: validate Podman deployment and architectural doc accuracy — Qa Engineer (◈ Standard, 3 SP)
+
+---

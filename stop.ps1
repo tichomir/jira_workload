@@ -3,10 +3,11 @@
 .SYNOPSIS
     Stop jira_workload containers (Windows PowerShell).
 .DESCRIPTION
-    Runs docker compose down to stop and remove containers.
+    Runs podman-compose down to stop and remove containers.
     Named volumes are preserved by default (pass -RemoveVolumes to also delete them).
+    Uses Podman (rootless, daemonless) via native install or WSL2.
 .PARAMETER RemoveVolumes
-    Also remove named Docker volumes (backup_data, sdi_tmp, export_data).
+    Also remove named Podman volumes (backup_data, sdi_tmp, export_data).
 #>
 param(
     [switch]$RemoveVolumes
@@ -21,20 +22,30 @@ Set-Location $ScriptDir
 function Write-Info { param($msg) Write-Host "[jira_workload] $msg" -ForegroundColor Green  }
 function Write-Warn { param($msg) Write-Host "[jira_workload] $msg" -ForegroundColor Yellow }
 
-try { docker info 2>&1 | Out-Null } catch { }
-if ($LASTEXITCODE -ne 0) {
-    Write-Warn "Docker Desktop is not running — nothing to stop."
-    exit 0
+# Detect whether to use native podman or WSL2
+$useWsl = $false
+if (-not (Get-Command podman-compose -ErrorAction SilentlyContinue)) {
+    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+        $useWsl = $true
+    } else {
+        Write-Warn "podman-compose is not installed — nothing to stop."
+        exit 0
+    }
 }
 
 Write-Info "Stopping containers..."
+$downArgs = if ($RemoveVolumes) { "down -v" } else { "down" }
+if ($useWsl) {
+    wsl -- bash -c "cd $(wsl --exec wslpath -u $($ScriptDir -replace '\\','/')) && podman-compose -f podman-compose.yml $downArgs"
+} else {
+    Invoke-Expression "podman-compose -f podman-compose.yml $downArgs"
+}
+
 if ($RemoveVolumes) {
-    docker compose down -v
     Write-Info "Containers and volumes removed."
 } else {
-    docker compose down
     Write-Info "All containers stopped."
     Write-Host ""
     Write-Host "Named volumes (backup_data, sdi_tmp, export_data) are preserved."
-    Write-Host "To remove volumes too: docker compose down -v  (or .\stop.ps1 -RemoveVolumes)"
+    Write-Host "To remove volumes too: podman-compose -f podman-compose.yml down -v  (or .\stop.ps1 -RemoveVolumes)"
 }

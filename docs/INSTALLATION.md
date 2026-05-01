@@ -2,24 +2,28 @@
 
 ## Prerequisites
 
-### Docker (recommended — works on all platforms)
+### Podman (recommended — works on all platforms, rootless, no daemon)
 
 | Platform | Install |
 |---|---|
-| macOS | [Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/) — supports Intel and Apple Silicon (M1/M2/M3) |
-| Windows 10/11 | [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) — requires WSL2 or Hyper-V |
-| Ubuntu / Debian | `sudo apt-get install docker.io docker-compose-plugin` |
-| Fedora / RHEL | `sudo dnf install docker docker-compose-plugin` |
+| macOS (Intel & Apple Silicon) | `brew install podman podman-compose` then `podman machine init && podman machine start` |
+| Fedora / RHEL / CentOS Stream | `sudo dnf install -y podman podman-compose` |
+| Debian / Ubuntu | `sudo apt-get install -y podman` then `pip install podman-compose` (or `pipx install podman-compose`) |
+| Windows 10/11 | Install [Podman Desktop](https://podman-desktop.io) **or** enable WSL2 (`wsl --install`) and install Podman inside the distro |
 
 Verify:
 ```bash
-docker --version          # Docker 24.x or later recommended
-docker compose version    # Compose v2 required (not the legacy docker-compose v1)
+podman --version          # Podman 4.x or later recommended
+podman-compose --version  # 1.x or later
 ```
 
-### Node.js (without Docker)
+> **macOS only:** The `podman machine` VM must be running before you use `podman-compose`.
+> Run it once: `podman machine init && podman machine start`.
+> Subsequent starts only need `podman machine start` (or it starts automatically on newer versions).
 
-Node.js >= 18 is required.  
+### Node.js (without Podman — local development only)
+
+Node.js >= 18 is required.
 Download from [nodejs.org](https://nodejs.org) or use a version manager:
 
 ```bash
@@ -36,7 +40,7 @@ fnm use 20
 
 ## Installation
 
-### Option A: Docker (recommended)
+### Option A: Podman (recommended)
 
 **Step 1 — Clone the repository**
 
@@ -91,13 +95,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 # Windows CMD
 start.bat
+
+# Manual (any platform)
+podman-compose -f podman-compose.yml up --build
 ```
 
 The application will be available at **http://localhost:4000**.
 
 ---
 
-### Option B: Without Docker (local Node.js)
+### Option B: Without Podman (local Node.js)
 
 **Step 1 — Clone and install dependencies**
 
@@ -122,36 +129,53 @@ npm run dev     # development mode with auto-restart (requires nodemon)
 
 ### macOS (Apple Silicon — M1/M2/M3)
 
-The Docker image is built for both `linux/amd64` and `linux/arm64`.
-Docker Desktop on Apple Silicon pulls the native `arm64` image automatically —
-no Rosetta emulation required.
+Podman on macOS runs containers inside a lightweight Linux VM (`podman machine`).
+The VM is multi-arch and natively supports `linux/arm64` — no Rosetta emulation needed.
+
+```bash
+# One-time machine setup
+podman machine init
+podman machine start
+
+# Then use the normal start script
+./start.sh
+```
 
 ### Windows
 
-- **Docker Desktop** requires WSL2 (Windows Subsystem for Linux 2).
-  Enable WSL2 by running in an Administrator PowerShell:
-  ```powershell
-  wsl --install
-  ```
-  Then restart and install Docker Desktop.
+**Option A — Podman Desktop (native Windows):**
+Install [Podman Desktop](https://podman-desktop.io) and use `start.bat` or `.\start.ps1`.
+`start.ps1` detects a native Podman install automatically.
 
-- Run `start.ps1` in PowerShell (not CMD) for the best experience.
-  If you see an execution policy error:
-  ```powershell
-  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-  ```
+**Option B — WSL2:**
+```powershell
+# Enable WSL2 (Administrator PowerShell, then restart)
+wsl --install
+```
+Inside the WSL2 distro:
+```bash
+sudo apt-get update && sudo apt-get install -y podman
+pip install podman-compose
+systemctl --user enable --now podman.socket
+```
+Then run `./start.sh` from a WSL2 terminal.
+`start.ps1` and `start.bat` auto-detect WSL2 and delegate to it if native Podman is not found.
 
-- If you use `start.bat`, port is hardcoded to 4000. Use `start.ps1` to
-  pick up a custom `PORT` from `.env`.
+If you see a PowerShell execution policy error:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
 
 ### Linux
 
-Ensure your user is in the `docker` group to run Docker without `sudo`:
-
+Rootless Podman works natively without a daemon.
+To activate the user socket (needed by `DOCKER_HOST` compatibility shim):
 ```bash
-sudo usermod -aG docker $USER
-# Log out and back in for the group change to take effect
+systemctl --user enable --now podman.socket
 ```
+
+`start.sh` exports `DOCKER_HOST` pointing at the rootless Podman socket automatically
+so that `podman-compose` can locate it even if `DOCKER_HOST` is not set in your shell.
 
 ---
 
@@ -176,10 +200,10 @@ curl http://localhost:4000/health
 ./healthcheck.sh
 
 # View running containers
-docker compose ps
+podman-compose -f podman-compose.yml ps
 
 # View application logs
-docker compose logs -f
+podman-compose -f podman-compose.yml logs -f
 ```
 
 ---
@@ -192,7 +216,7 @@ git pull
 ./start.sh       # or .\start.ps1
 ```
 
-The `--build` flag in `start.sh` ensures the Docker image is rebuilt with the
+The `--build` flag in `start.sh` ensures the container image is rebuilt with the
 latest source.
 
 ---
@@ -201,10 +225,10 @@ latest source.
 
 ```bash
 # Stop containers and remove named volumes (deletes all backup data)
-docker compose down -v
+podman-compose -f podman-compose.yml down -v
 
-# Remove the Docker image
-docker rmi jira-workload:latest
+# Remove the container image
+podman rmi jira-workload:latest
 ```
 
 ---
@@ -213,13 +237,15 @@ docker rmi jira-workload:latest
 
 | Symptom | Solution |
 |---|---|
-| Server fails to start | Verify all required env vars are set in `.env`; run `docker compose logs app` to see the startup error |
+| Server fails to start | Verify all required env vars are set in `.env`; run `podman-compose -f podman-compose.yml logs app` to see the startup error |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` invalid | Must be exactly 64 hex characters; regenerate with `openssl rand -hex 32` (macOS/Linux) or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | OAuth redirect mismatch error | `ATLASSIAN_REDIRECT_URI` in `.env` must **exactly** match the Redirect URI registered in the Atlassian Developer Console — no trailing slash |
 | Webhooks not receiving events | Set `WEBHOOK_CALLBACK_URL` to a publicly reachable HTTPS URL; use [ngrok](https://ngrok.com) (`ngrok http 4000`) for local development |
-| Port 4000 already in use | Set `PORT=4001` (or any free port) in `.env`; the Docker port mapping updates automatically |
+| Port 4000 already in use | Set `PORT=4001` (or any free port) in `.env`; the Podman port mapping updates automatically |
 | `permission denied` running `start.sh` on Linux/macOS | Run `chmod +x start.sh stop.sh healthcheck.sh` then retry |
-| Container exits immediately after start | Run `docker compose logs app` — most commonly a missing or malformed env var; compare your `.env` against `.env.example` |
-| Docker build fails on Apple Silicon (M1/M2/M3) | Ensure Docker Desktop is updated to 4.x or later; the image ships a native `linux/arm64` layer and does not require Rosetta |
-| Backup data lost after restart | Use `docker compose down` **without** the `-v` flag to preserve named volumes; `-v` permanently deletes all backup data |
+| Container exits immediately after start | Run `podman-compose -f podman-compose.yml logs app` — most commonly a missing or malformed env var; compare your `.env` against `.env.example` |
+| Podman machine not running (macOS) | Run `podman machine start` then retry `./start.sh` |
+| `podman-compose: command not found` | Install with `pip install podman-compose` or `pipx install podman-compose` |
+| Backup data lost after restart | Use `podman-compose -f podman-compose.yml down` **without** the `-v` flag to preserve named volumes; `-v` permanently deletes all backup data |
 | `ECONNREFUSED` connecting to Jira API | Confirm your Atlassian OAuth app has the correct scopes and the `ATLASSIAN_CLIENT_ID` / `ATLASSIAN_CLIENT_SECRET` values are not swapped |
+| Linux: `podman-compose` cannot find socket | Run `systemctl --user enable --now podman.socket`, then ensure `XDG_RUNTIME_DIR` is set (`echo $XDG_RUNTIME_DIR`) |

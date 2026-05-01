@@ -1,18 +1,24 @@
 @echo off
 REM =============================================================================
 REM start.bat — Start jira_workload locally (Windows Command Prompt)
+REM Uses Podman (rootless, daemonless) instead of Docker.
 REM =============================================================================
-REM  Prefer start.ps1 (PowerShell) for richer output.  This .bat is provided as
-REM  a fallback for environments where PowerShell execution is restricted.
+REM  Prefer start.ps1 (PowerShell) for richer output and WSL2 auto-detection.
+REM  This .bat is provided as a fallback for environments where PowerShell
+REM  execution policy is restricted.
+REM
+REM  Podman must be installed and available on PATH, or accessible via WSL2.
+REM  Install: https://podman-desktop.io  or run from WSL2 terminal.
 REM =============================================================================
 
 cd /d "%~dp0"
 
-REM ─── 1. Docker check ─────────────────────────────────────────────────────
-docker info >nul 2>&1
+REM ─── 1. Podman check ─────────────────────────────────────────────────────
+podman info >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [jira_workload] ERROR: Docker Desktop is not running.
-    echo   Start Docker Desktop from the system tray and try again.
+    echo [jira_workload] ERROR: Podman is not running or not installed.
+    echo   Install Podman Desktop from https://podman-desktop.io
+    echo   Or run this script from a WSL2 terminal with Podman installed.
     exit /b 1
 )
 
@@ -35,10 +41,10 @@ if not exist .env (
 )
 
 REM ─── 3. Start the stack ──────────────────────────────────────────────────
-echo [jira_workload] Building and starting containers...
-docker compose up --build -d
+echo [jira_workload] Building and starting containers with Podman Compose...
+podman-compose -f podman-compose.yml up --build -d
 if %ERRORLEVEL% neq 0 (
-    echo [jira_workload] ERROR: docker compose up failed.
+    echo [jira_workload] ERROR: podman-compose up failed.
     exit /b 1
 )
 
@@ -49,7 +55,7 @@ echo  Jira Workload is running
 echo ================================================
 echo   App URL:  http://localhost:4000
 echo   Health:   http://localhost:4000/health
-echo   Logs:     docker compose logs -f
+echo   Logs:     podman-compose -f podman-compose.yml logs -f
 echo   Stop:     stop.bat
 echo ================================================
 echo.

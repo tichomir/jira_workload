@@ -97,10 +97,10 @@ if your deployment requires different retention or alerting behaviour:
 ## 7. Start the Service
 
 ```bash
-docker compose up oauth-service
+podman-compose -f podman-compose.yml up
 ```
 
-Or without Docker:
+Or without Podman (local Node.js):
 
 ```bash
 npm install

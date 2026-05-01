@@ -287,23 +287,23 @@ All endpoints are prefixed with `/api/v1/`.
 
 ```bash
 # View live application logs
-docker compose logs -f
+podman-compose -f podman-compose.yml logs -f
 
 # Check container health
-docker compose ps
+podman-compose -f podman-compose.yml ps
 
 # Run health check script
 ./healthcheck.sh
 
 # Inspect a specific container
-docker compose exec app sh
+podman-compose -f podman-compose.yml exec app sh
 ```
 
 **Common issues:**
 
 | Symptom | Solution |
 |---|---|
-| Server fails to start | Check that all required env vars are set in `.env`; run `docker compose logs app` |
+| Server fails to start | Check that all required env vars are set in `.env`; run `podman-compose -f podman-compose.yml logs app` |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` error | Must be exactly 64 hex characters — regenerate with `openssl rand -hex 32` |
 | OAuth redirect mismatch | Ensure `ATLASSIAN_REDIRECT_URI` in `.env` exactly matches the URI in the Atlassian Developer Console |
 | Webhooks not firing | Set `WEBHOOK_CALLBACK_URL` to a publicly reachable URL; use ngrok for local dev |

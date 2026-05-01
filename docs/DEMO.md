@@ -24,7 +24,7 @@ Before starting the demo, ensure the following are in place:
 
 | Requirement | Notes |
 |---|---|
-| Docker Desktop (macOS/Windows) or Docker Engine + Compose (Linux) | [Install Docker](https://docs.docker.com/get-docker/) |
+| Podman (rootless, no daemon) + podman-compose | macOS: `brew install podman podman-compose` · Linux: `sudo dnf install -y podman podman-compose` · Windows: [Podman Desktop](https://podman-desktop.io) |
 | Atlassian Developer Console OAuth 2.0 (3LO) app | [Create an app](https://developer.atlassian.com/console/myapps/) |
 | `.env` file configured with valid credentials | Copy `.env.example` → `.env`, fill in the four required variables |
 | A live Jira Cloud site with at least one project and a few issues | Used throughout the demo |
@@ -45,7 +45,7 @@ Before starting the demo, ensure the following are in place:
    | macOS / Linux | `./start.sh` |
    | Windows (PowerShell) | `.\start.ps1` |
    | Windows (CMD) | `start.bat` |
-   | Manual | `docker compose up --build` |
+   | Manual | `podman-compose -f podman-compose.yml up --build` |
 
 3. Wait for the log line:
    ```
@@ -59,7 +59,7 @@ Before starting the demo, ensure the following are in place:
 
 ### Expected Outcome
 
-- Docker builds the image and starts the container without errors.
+- Podman builds the image and starts the container without errors.
 - The health endpoint returns:
   ```json
   { "status": "ok" }
@@ -358,7 +358,7 @@ A recorded walkthrough covering all 7 sections above is linked from the demo ass
 
 **[`docs/demo-assets/happy-path-walkthrough.md`](demo-assets/happy-path-walkthrough.md)**
 
-The recording shows the complete flow from Docker startup to Resilience Module inspection in a single uninterrupted session.
+The recording shows the complete flow from Podman startup to Resilience Module inspection in a single uninterrupted session.
 
 ---
 
@@ -386,5 +386,5 @@ stop.bat         # Windows CMD
 Data volumes persist across restarts. To do a clean reset:
 
 ```bash
-docker compose down -v   # removes named volumes — all backup data is erased
+podman-compose -f podman-compose.yml down -v   # removes named volumes — all backup data is erased
 ```

@@ -3,8 +3,12 @@
 .SYNOPSIS
     Start jira_workload locally on Windows (PowerShell).
 .DESCRIPTION
-    Validates Docker Desktop is running, bootstraps .env from .env.example if
-    absent, runs docker compose up --build, and prints the local access URL.
+    Uses Podman (rootless, daemonless) via WSL2. Validates that WSL2 and
+    Podman are available, bootstraps .env from .env.example if absent,
+    runs podman-compose up --build, and prints the local access URL.
+.NOTES
+    Podman must be installed inside the WSL2 Linux distribution.
+    Install: wsl -- sudo apt-get install -y podman && pip install podman-compose
 #>
 
 Set-StrictMode -Version Latest
@@ -17,22 +21,31 @@ function Write-Info  { param($msg) Write-Host "[jira_workload] $msg" -Foreground
 function Write-Warn  { param($msg) Write-Host "[jira_workload] $msg" -ForegroundColor Yellow }
 function Write-Err   { param($msg) Write-Host "[jira_workload] ERROR: $msg" -ForegroundColor Red }
 
-# ─── 1. Docker check ─────────────────────────────────────────────────────────
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Err "Docker is not installed."
-    Write-Host "  Install Docker Desktop from https://www.docker.com/products/docker-desktop"
-    exit 1
-}
+# ─── 1. Podman / WSL2 check ──────────────────────────────────────────────────
+# Prefer native podman if available (Podman Desktop for Windows installs it).
+# Fall back to podman inside WSL2.
+$usePodmanNative = $false
+$useWsl = $false
 
-try {
-    docker info 2>&1 | Out-Null
-} catch {
-    Write-Err "Docker Desktop is not running. Start it from the system tray and try again."
-    exit 1
-}
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Err "Docker Desktop is not running. Start it from the system tray and try again."
+if (Get-Command podman -ErrorAction SilentlyContinue) {
+    $usePodmanNative = $true
+    Write-Info "Using native Podman installation."
+} elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
+    # Check podman is installed inside WSL2
+    $wslCheck = wsl -- command -v podman 2>&1
+    if ($LASTEXITCODE -eq 0 -and $wslCheck -match 'podman') {
+        $useWsl = $true
+        Write-Info "Using Podman inside WSL2."
+    } else {
+        Write-Err "Podman is not installed."
+        Write-Host "  Option A (WSL2): wsl -- sudo apt-get install -y podman && pip install podman-compose"
+        Write-Host "  Option B (native): install Podman Desktop from https://podman-desktop.io"
+        exit 1
+    }
+} else {
+    Write-Err "Neither native Podman nor WSL2 were found."
+    Write-Host "  Install Podman Desktop from https://podman-desktop.io"
+    Write-Host "  Or enable WSL2: wsl --install, then install Podman inside the distro."
     exit 1
 }
 
@@ -63,10 +76,14 @@ if ($portLine) {
 }
 
 # ─── 4. Start the stack ──────────────────────────────────────────────────────
-Write-Info "Building and starting containers..."
-docker compose up --build -d
+Write-Info "Building and starting containers with Podman Compose..."
+if ($useWsl) {
+    wsl -- bash -c "cd $(wsl --exec wslpath -u $($ScriptDir -replace '\\','/')) && podman-compose -f podman-compose.yml up --build -d"
+} else {
+    podman-compose -f podman-compose.yml up --build -d
+}
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "docker compose up failed. See output above."
+    Write-Err "podman-compose up failed. See output above."
     exit 1
 }
 
@@ -89,7 +106,7 @@ if ($healthy) {
     Write-Info "Application is up!"
 } else {
     Write-Warn "Health check timed out. The app may still be starting."
-    Write-Warn "Check logs with: docker compose logs -f"
+    Write-Warn "Check logs with: podman-compose -f podman-compose.yml logs -f"
 }
 
 # ─── 6. Print access information ─────────────────────────────────────────────
@@ -99,6 +116,6 @@ Write-Info "Jira Workload is running"
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 Write-Host "  App URL:    http://localhost:${Port}"
 Write-Host "  Health:     http://localhost:${Port}/health"
-Write-Host "  Logs:       docker compose logs -f"
+Write-Host "  Logs:       podman-compose -f podman-compose.yml logs -f"
 Write-Host "  Stop:       .\stop.ps1"
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

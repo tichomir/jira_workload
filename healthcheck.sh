@@ -53,18 +53,18 @@ else
   fail "GET /api/v1/integrations → no response (connection refused?)"
 fi
 
-# ─── 4. Docker container status (optional — only when Docker is available) ────
-if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-  CONTAINER_STATUS=$(docker compose ps --format json 2>/dev/null \
-    | grep -o '"State":"[^"]*"' | head -1 \
-    | sed 's/"State":"//;s/"//' || echo "unknown")
-  if [ "$CONTAINER_STATUS" = "running" ]; then
-    pass "Docker container state: running"
+# ─── 4. Podman container status (optional — only when Podman is available) ────
+if command -v podman &>/dev/null && podman info &>/dev/null 2>&1; then
+  CONTAINER_STATUS=$(podman ps --filter name=jira-workload --format "{{.Status}}" 2>/dev/null | head -1 || echo "")
+  if echo "$CONTAINER_STATUS" | grep -qi "up"; then
+    pass "Podman container state: running"
+  elif [ -z "$CONTAINER_STATUS" ]; then
+    echo "  [SKIP] No jira-workload container found — skipping container state check"
   else
-    fail "Docker container state: ${CONTAINER_STATUS}"
+    fail "Podman container state: ${CONTAINER_STATUS}"
   fi
 else
-  echo "  [SKIP] Docker not available — skipping container state check"
+  echo "  [SKIP] Podman not available — skipping container state check"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
