@@ -18,9 +18,31 @@
  *   - POST /api/v1/resilience/purge/cascade/basket: invalid request shapes
  */
 
+// ---------------------------------------------------------------------------
+// Environment — must precede any require() that loads app modules
+// ---------------------------------------------------------------------------
+process.env.OAUTH_TOKEN_ENCRYPTION_KEY = '0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d0646e4c133d';
+process.env.ATLASSIAN_CLIENT_ID        = '1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9';
+process.env.ATLASSIAN_CLIENT_SECRET    = 'test-secret-sprint6';
+process.env.ATLASSIAN_REDIRECT_URI     = 'https://localhost:4443/oauth/callback';
+process.env.NODE_ENV                   = 'test';
+process.env.FRONTEND_BASE_URL          = 'https://localhost:4443';
+
 const request = require('supertest');
 const app = require('../src/app');
+const db = require('../src/db');
 const { filterPurgeCascadeBasket } = require('../src/services/purgeCascade');
+
+// ---------------------------------------------------------------------------
+// Isolation — clear inventory-related DB maps before each test so that
+// stub data is consistently used regardless of what prior test files ran.
+// ---------------------------------------------------------------------------
+beforeEach(() => {
+  db.projectNodes.clear();
+  db.workflowNodes.clear();
+  db.customFieldDefinitions.clear();
+  db.customFieldContextNodes.clear();
+});
 
 // ---------------------------------------------------------------------------
 // Purge cascade guard — unit tests (service layer)

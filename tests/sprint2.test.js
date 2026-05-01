@@ -6,6 +6,16 @@
  */
 
 // ---------------------------------------------------------------------------
+// Environment — must precede any require() that loads app modules
+// ---------------------------------------------------------------------------
+process.env.OAUTH_TOKEN_ENCRYPTION_KEY = '0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d0646e4c133d';
+process.env.ATLASSIAN_CLIENT_ID        = '1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9';
+process.env.ATLASSIAN_CLIENT_SECRET    = 'test-secret-sprint2';
+process.env.ATLASSIAN_REDIRECT_URI     = 'https://localhost:4443/oauth/callback';
+process.env.NODE_ENV                   = 'test';
+process.env.FRONTEND_BASE_URL          = 'https://localhost:4443';
+
+// ---------------------------------------------------------------------------
 // Mock axios BEFORE requiring any service modules
 // ---------------------------------------------------------------------------
 jest.mock('axios');
@@ -202,29 +212,88 @@ describe('JQL Enumeration', () => {
   });
 
   test('full JQL enumeration paginates until all pages exhausted', async () => {
-    // Page 1: 2 issues out of 3 total
-    const issue1 = makeIssue('PROJ-1');
-    const issue2 = makeIssue('PROJ-2');
-    const issue3 = makeIssue('PROJ-3');
+    // Page 1: 100 issues (full page), page 2: 50 issues (under-full → last page)
+    function makeBulkIssues(prefix, count, offset = 0) {
+      return Array.from({ length: count }, (_, i) => makeIssue(`${prefix}-${offset + i + 1}`));
+    }
+    const page1Issues = makeBulkIssues('PROJ', 100, 0);
+    const page2Issues = makeBulkIssues('PROJ', 50, 100);
 
     axios.get
       .mockResolvedValueOnce({
-        data: { issues: [issue1, issue2], total: 3, startAt: 0, maxResults: 2 },
+        data: { issues: page1Issues, total: 150, startAt: 0, maxResults: 100 },
       })
       .mockResolvedValueOnce({
-        data: { issues: [issue3], total: 3, startAt: 2, maxResults: 2 },
+        data: { issues: page2Issues, total: 150, startAt: 100, maxResults: 100 },
       });
 
     const issues = await paginateAllIssues('integ-1', 'cloud-abc', makeMockJiraAxios(), 'project="PROJ" ORDER BY updated ASC');
 
-    expect(issues).toHaveLength(3);
+    expect(issues).toHaveLength(150);
     expect(axios.get).toHaveBeenCalledTimes(2);
-    // Both calls should have been made
     const firstCall = axios.get.mock.calls[0];
     expect(firstCall[1].params.startAt).toBe(0);
     const secondCall = axios.get.mock.calls[1];
-    expect(secondCall[1].params.startAt).toBe(2);
+    expect(secondCall[1].params.startAt).toBe(100);
   });
+
+  test('pagination terminates on under-full page when total is undefined', async () => {
+    // Simulates the TS project bug: API returns small result set with no total field
+    const issue1 = makeIssue('PROJ-1');
+    const issue2 = makeIssue('PROJ-2');
+    const issue3 = makeIssue('PROJ-3');
+
+    axios.get.mockResolvedValueOnce({
+      // total is absent — mirrors the real /rest/api/3/search/jql response shape seen in the wild
+      data: { issues: [issue1, issue2, issue3], startAt: 0, maxResults: 100 },
+    });
+
+    const issues = await paginateAllIssues('integ-1', 'cloud-abc', makeMockJiraAxios(), 'project="PROJ" ORDER BY updated ASC');
+
+    // Must stop after a single under-full page; must NOT loop indefinitely
+    expect(issues).toHaveLength(3);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
+
+  test('pagination with total=3 terminates after first page', async () => {
+    // API returns total=3 with 3 issues — startAt(0) + PAGE_SIZE(100) >= total(3), so terminates
+    const issue1 = makeIssue('PROJ-1');
+    const issue2 = makeIssue('PROJ-2');
+    const issue3 = makeIssue('PROJ-3');
+
+    axios.get.mockResolvedValueOnce({
+      data: { issues: [issue1, issue2, issue3], total: 3, startAt: 0, maxResults: 100 },
+    });
+
+    const issues = await paginateAllIssues('integ-total3', 'cloud-abc', makeMockJiraAxios(), 'project="PROJ" ORDER BY updated ASC');
+
+    expect(issues).toHaveLength(3);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
+
+  test('hard-cap guard fires at startAt > 100000 and does not loop indefinitely', async () => {
+    // Mock always returns a full page (100 issues) with no total — simulates a runaway data source.
+    // Without the hard-cap, this would loop forever. The guard must fire and break the loop.
+    const fullPageIssues = Array.from({ length: 100 }, (_, i) => makeIssue(`PROJ-${i}`));
+    axios.get.mockResolvedValue({
+      data: { issues: fullPageIssues, startAt: 0, maxResults: 100 },
+    });
+
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const issues = await paginateAllIssues('integ-hardcap', 'cloud-abc', makeMockJiraAxios(), 'project="HARDCAP" ORDER BY updated ASC');
+
+    // Hard-cap fires once startAt exceeds 100000 (after 1001 full pages: startAt 0→100→...→100100)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('hard-cap safety guard fired')
+    );
+
+    // Exactly 1001 API calls (startAt 0..100000, then breaks at 100100)
+    expect(axios.get.mock.calls.length).toBe(1001);
+    expect(issues.length).toBe(100100);
+
+    consoleSpy.mockRestore();
+  }, 15000);
 
   test('full JQL run stores lastBackupTimestamp on success', async () => {
     const issue1 = makeIssue('PROJ-1');

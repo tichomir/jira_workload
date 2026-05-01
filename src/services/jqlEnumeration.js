@@ -15,6 +15,8 @@ function getVerifyCloudId() {
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const PAGE_SIZE = 100;
+// Hard-cap: break pagination if startAt exceeds this to prevent runaway loops
+const PAGINATION_HARD_CAP = 100_000;
 // 60-second overlap buffer guards against clock skew between backup service and Jira Cloud
 const OVERLAP_BUFFER_MS = 60 * 1000;
 
@@ -103,12 +105,23 @@ async function fetchIssuePage(cloudId, jiraAxios, jql, startAt, connectionId) {
 async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql, jobId = null, projectKey = null) {
   const allIssues = [];
   let startAt = 0;
+  let pagesTraversed = 0;
+  const paginationStartMs = Date.now();
 
   while (true) {
-    console.info(`[jql] fetching page: integrationId=${integrationId} startAt=${startAt} jql="${jql.substring(0, 80)}"`);
     const page = await fetchIssuePage(cloudId, jiraAxios, jql, startAt, integrationId);
     const { issues = [], total, maxResults } = page;
-    console.info(`[jql] page received: issues=${issues.length} total=${total} startAt=${startAt}`);
+
+    pagesTraversed++;
+
+    // Emit START log on first page once we have the resolved total from the API response
+    if (pagesTraversed === 1) {
+      const resolvedTotal = (typeof total === 'number') ? total : 'unknown';
+      console.info(`[jql] start: integrationId=${integrationId} jql="${jql.substring(0, 80)}" total=${resolvedTotal}`);
+    }
+
+    // Per-page detail at DEBUG level to avoid flooding logs on large projects
+    console.debug(`[jql] page: pageIndex=${pagesTraversed} startAt=${startAt} issuesOnPage=${issues.length} runningTotal=${allIssues.length + issues.length}`);
 
     for (const issue of issues) {
       const nodeKey = `${integrationId}:${issue.key}`;
@@ -128,7 +141,7 @@ async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql, jobId =
     }
 
     allIssues.push(...issues);
-    startAt += maxResults || PAGE_SIZE;
+    startAt += PAGE_SIZE;
 
     // Emit progress after each page so the polling endpoint reflects live state.
     emitProgress(jobId, {
@@ -136,13 +149,28 @@ async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql, jobId =
       objectType: 'JiraIssueNode',
       objectKey: projectKey,
       processed: allIssues.length,
-      total: total || allIssues.length,
+      total: (typeof total === 'number') ? total : allIssues.length,
     });
 
-    if (startAt >= total || issues.length === 0) {
+    // Hard-cap safety guard: prevent runaway loops when total is missing/corrupt
+    if (startAt > PAGINATION_HARD_CAP) {
+      console.error(`[jql] hard-cap safety guard fired: startAt=${startAt} exceeds ${PAGINATION_HARD_CAP}, aborting pagination`);
+      break;
+    }
+
+    // Terminate when total is known and we have fetched everything
+    if (typeof total === 'number' && startAt >= total) {
+      break;
+    }
+
+    // Last-page detection: an under-full page means no more pages exist
+    if (issues.length < PAGE_SIZE) {
       break;
     }
   }
+
+  const durationMs = Date.now() - paginationStartMs;
+  console.info(`[jql] end: integrationId=${integrationId} totalFetched=${allIssues.length} pagesTraversed=${pagesTraversed} durationMs=${durationMs}`);
 
   return allIssues;
 }

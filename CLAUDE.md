@@ -2832,3 +2832,124 @@ Make a plan, fix this as I'm tired of you not being able to do stuff !!!
 - ✅ Fix: stopHeartbeat not called on job failure/exception paths in backup.js — Backend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 17 — JQL Pagination Fix & Issue Backup Completion | 2026-05-01 | ✅ done | 16 SP
+**Goal:** This is getting pathetic. 
+
+Now, It does something, and throws all the time these logs: 
+[jql] page received: issues=3 total=undefined startAt=12600
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=12700 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=12700
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=12800 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=12800
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=12900 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=12900
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13000 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13000
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13100 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13100
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13200 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13200
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13300 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13300
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13400 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13400
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13500 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13500
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13600 jql="project="TS" ORDER BY updated ASC"
+[jql] page received: issues=3 total=undefined startAt=13600
+[jql] fetching page: integrationId=c08a1b3b-63b9-465e-bda3-334492e71ae9 startAt=13700 jql="project="TS" ORDER BY updated ASC"
+
+If you sutpid thing are doing this API call for real - I think you are not doing any API calls for real and you are lying all the time - then you should be getting list of 3 issues and go and backup them. 
+
+when run the JQL manually I get these results: 
+
+
+Basic
+JQL
+project="TS" ORDER BY updated ASC
+
+
+Open JQL syntax help in a new tab.
+
+Enter to search
+Shift+Enter to add a new line
+
+Clear filters
+
+Save filter
+3 work items match your search.
+
+Work
+
+
+
+Story
+TS-2
+
+Story 1
+
+Unassigned
+
+
+Tihomir Hadzhiev
+
+
+Medium
+
+To Do
+Unresolved
+
+May 01, 2026, 8:58 PM
+
+May 01, 2026, 8:58 PM
+
+None
+
+
+Story
+TS-3
+
+Story 2
+
+Unassigned
+
+
+Tihomir Hadzhiev
+
+
+Medium
+
+To Do
+Unresolved
+
+May 01, 2026, 8:58 PM
+
+May 01, 2026, 8:58 PM
+
+None
+
+
+Epic
+TS-1
+
+EPIC1
+
+Unassigned
+
+
+Tihomir Hadzhiev
+
+
+Medium
+
+To Do
+Unresolved
+
+**Delivered:**
+- ✅ Diagnose and fix infinite JQL pagination loop — Software Architect (◈ Standard, 3 SP)
+- ✅ Implement issue backup persistence and job completion — Backend Developer (◉ Deep, 5 SP)
+- ✅ Add pagination debug logging and telemetry — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Integration test: JQL pagination termination and full backup completion — Qa Engineer (◈ Standard, 3 SP)
+- ✅ Fix: pre-existing sprint6.test.js pagination test failure — Backend Developer (◈ Standard, 3 SP)
+
+---

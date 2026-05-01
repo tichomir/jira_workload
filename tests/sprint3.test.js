@@ -5,6 +5,16 @@
  * Tests all acceptance criteria: search endpoints, Object Explorer diff, tokenisation, date ranges.
  */
 
+// ---------------------------------------------------------------------------
+// Environment — must precede any require() that loads app modules
+// ---------------------------------------------------------------------------
+process.env.OAUTH_TOKEN_ENCRYPTION_KEY = '0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d0646e4c133d';
+process.env.ATLASSIAN_CLIENT_ID        = '1hCMINKiuGDOyWuGkI4BnMQhq8mwPEa9';
+process.env.ATLASSIAN_CLIENT_SECRET    = 'test-secret-sprint3';
+process.env.ATLASSIAN_REDIRECT_URI     = 'https://localhost:4443/oauth/callback';
+process.env.NODE_ENV                   = 'test';
+process.env.FRONTEND_BASE_URL          = 'https://localhost:4443';
+
 const request = require('supertest');
 const { v4: uuidv4 } = require('uuid');
 
