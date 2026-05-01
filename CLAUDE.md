@@ -2783,3 +2783,16 @@ Finally if I try to backup again, I'm getting unauthorized here are the logs:
 - ✅ Fix: Update Jira search endpoint from deprecated /rest/api/3/search to /rest/api/3/search/jql — Software Architect (◈ Standard, 3 SP)
 
 ---
+### Sprint 15 | 2026-05-01 | ✅ done | 0 SP
+**Goal:** It doesn't work. You can't make things working and you are not tesing correctly. 
+
+I have strated a backup job and it just runs forever - 
+
+Backup in progress
+Job 68395a23-c315-4022-a748-1c692a159772 running… (started May 1, 2026, 6:58 PM)
+
+It never finishes and I don't think it does something. this needs to be investigated. I think it is also best if we can see in the GUI what is going on, e.g. whats the prgoress of the backup or restore job. What objects are being processed etc...
+
+**Delivered:**
+
+---
