@@ -39,8 +39,46 @@ function isPurgeCascadeExcluded(nodeType) {
   return PURGE_EXCLUDED_NODE_TYPES.has(nodeType);
 }
 
+/**
+ * Filter a purge cascade basket, silently removing excluded node types.
+ * Emits a structured exclusion log entry (PURGE_CASCADE_EXCLUSION) for each
+ * excluded item. Does not throw — callers receive the filtered allowed list.
+ *
+ * @param {Array<{ nodeType: string, targetId?: string, [key: string]: any }>} basket
+ * @returns {{
+ *   allowed: Array<{ nodeType: string, targetId: string|null }>,
+ *   excluded: Array<{ nodeType: string, targetId: string|null }>,
+ *   exclusionLog: Array<{ event: string, nodeType: string, targetId: string|null, reason: string, timestamp: string }>
+ * }}
+ */
+function filterPurgeCascadeBasket(basket) {
+  const allowed = [];
+  const excluded = [];
+  const exclusionLog = [];
+
+  for (const item of basket) {
+    if (PURGE_EXCLUDED_NODE_TYPES.has(item.nodeType)) {
+      const entry = {
+        event: 'PURGE_CASCADE_EXCLUSION',
+        nodeType: item.nodeType,
+        targetId: item.targetId || null,
+        reason: `Node type "${item.nodeType}" is excluded from purge cascade (site-scoped object protection).`,
+        timestamp: new Date().toISOString(),
+      };
+      excluded.push({ nodeType: item.nodeType, targetId: item.targetId || null });
+      exclusionLog.push(entry);
+      console.log(JSON.stringify(entry));
+    } else {
+      allowed.push({ nodeType: item.nodeType, targetId: item.targetId || null });
+    }
+  }
+
+  return { allowed, excluded, exclusionLog };
+}
+
 module.exports = {
   PURGE_EXCLUDED_NODE_TYPES,
   assertPurgeCascadeAllowed,
   isPurgeCascadeExcluded,
+  filterPurgeCascadeBasket,
 };

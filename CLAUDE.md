@@ -75,6 +75,29 @@
 - Luhn algorithm applied post-match for PAN candidates; entropy check for credential Pattern C; placeholder allowlist for emails and credentials.
 - Binary files (.pdf, .docx) capped at 50 MB; extraction failures are non-blocking (SDI_EXTRACTION_WARN).
 
+### Sprint 6 — Protected Object Inventory and Resilience Module (2026-04-30)
+**Goal:** Implement the Protected Object Inventory sidebar within the Resilience Module.
+
+**Architect:** software_architect
+
+**Deliverables produced:**
+- `docs/architecture/resilience-module-architecture.md` — Full Resilience Module architecture:
+  - Sidebar item model: `SidebarItem` interface with `id`, `label`, `nodeType`, `defaultSelected`, `purgeProtected`, `icon` fields
+  - Static sidebar registry: Projects (default), Workflows (purge-protected), Custom Fields (purge-protected)
+  - Inventory grid column contract per T8 §3 for all three node types (universal columns + type-specific columns)
+  - Platform-layer purge cascade exclusion boundary design (references existing `purgeCascade.js` enforcement)
+  - Cascade iterator skip rule (manifest-build-time exclusion via `isPurgeCascadeExcluded`)
+  - UI protection indicator contract: lock icon + tooltip on sidebar; `purgeProtectedBadge` static column on grid rows
+  - `GET /api/v1/resilience/inventory` API contract
+  - 4 ADRs covering static registry, type-level protection flag, service-layer enforcement primacy, and CustomFieldNode label mapping
+
+**Key decisions:**
+- Sidebar registry is static (3 items fixed by product scope); `defaultSelected` set exclusively on `JiraProjectNode`.
+- `purgeProtected` is a type-level flag, not per-object — mirrors the `PURGE_EXCLUDED_NODE_TYPES` set in `purgeCascade.js`.
+- Purge cascade boundary is authoritative at the service layer; UI lock badge is informational only (ADR-RES-003).
+- `JiraCustomFieldNode` (UI label) maps to `JiraCustomFieldDefinitionNode` at the data layer; both plus `JiraCustomFieldContextNode` are excluded from purge cascades.
+- `purgeProtectedBadge` column is static on every Workflow and Custom Field grid row — no per-row configurability.
+
 ## Conventions
 - All architecture docs live in `docs/architecture/`.
 - Sequence diagrams use Mermaid `sequenceDiagram` blocks.
@@ -183,5 +206,23 @@ Deliverables:
 - ✅ Define SDI constants, regulation config, and detection pattern registry — Backend Developer (⚡ Quick, 2 SP)
 - ✅ Implement SDI scan pipeline backend: extractors, pattern scanner, findings API — Backend Developer (◉ Deep, 8 SP)
 - ✅ Implement SDI teaser results UI: findings surface per backup point — Frontend Developer (◉ Deep, 5 SP)
+
+---
+### Sprint 6 | 2026-05-01 | ✅ done | 18 SP
+**Goal:** [Phase: Protected Object Inventory and Resilience Module]
+Implement the Protected Object Inventory sidebar within the Resilience Module, surfacing JiraProjectNode (default), JiraWorkflowNode, and JiraCustomFieldNode with the standard column set defined in T8 §3, and enforcing the purge cascade exclusion boundary at the platform layer for workflow and custom field node types.
+
+Deliverables:
+- Resilience Module sidebar with three object type items: Projects (JiraProjectNode, default selected), Workflows (JiraWorkflowNode), Custom Fields (JiraCustomFieldNode)
+- Default column set per T8 §3 rendered for each object type in the inventory grid
+- Platform-layer purge cascade boundary: JiraWorkflowNode, JiraCustomFieldDefinitionNode, and JiraCustomFieldContextNode excluded from any purge cascade operation regardless of basket composition
+- UI indication that workflow and custom field objects are protected from purge cascade
+
+**Delivered:**
+- ✅ Design Resilience Module sidebar and purge cascade boundary architecture — Software Architect (◈ Standard, 3 SP)
+- ✅ Define Resilience Module constants, column schemas, and purge exclusion registry — Backend Developer (⚡ Quick, 2 SP)
+- ✅ Implement platform-layer purge cascade boundary enforcement and inventory data API — Backend Developer (◉ Deep, 5 SP)
+- ✅ Implement Resilience Module sidebar and inventory grid UI — Frontend Developer (◉ Deep, 5 SP)
+- ✅ QA: Resilience Module sidebar, inventory grid, and purge cascade boundary — Qa Engineer (◈ Standard, 3 SP)
 
 ---

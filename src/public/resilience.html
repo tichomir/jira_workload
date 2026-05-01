@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resilience Module — Workload Analytics</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* ── Resilience Module layout ── */
+
+    .resilience-layout {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .resilience-sidebar {
+      width: 220px;
+      flex-shrink: 0;
+    }
+
+    .resilience-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    @media (max-width: 680px) {
+      .resilience-layout { flex-direction: column; }
+      .resilience-sidebar { width: 100%; }
+    }
+
+    /* ── Sidebar items ── */
+
+    .sidebar-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: 4px 14px 10px;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text);
+      transition: background .1s;
+      user-select: none;
+      outline: none;
+    }
+
+    .sidebar-item:hover   { background: var(--primary-light); }
+    .sidebar-item:focus   { box-shadow: 0 0 0 2px var(--primary); }
+
+    .sidebar-item.active {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    .sidebar-item-icon  { font-size: 16px; flex-shrink: 0; }
+    .sidebar-item-label { flex: 1; }
+
+    .sidebar-item-lock {
+      font-size: 13px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      position: relative;
+      cursor: default;
+    }
+
+    /* Tooltip on sidebar lock icon */
+    .sidebar-item-lock[data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 6px);
+      background: var(--text);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    /* ── Skeleton loader ── */
+
+    .skeleton-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+    .skeleton-row {
+      height: 44px;
+      background: linear-gradient(90deg, var(--bg) 25%, #e8eaed 50%, var(--bg) 75%);
+      background-size: 200% 100%;
+      border-radius: var(--radius);
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ── Error & empty states ── */
+
+    .inline-error {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 12px; background: var(--danger-bg);
+      border-radius: var(--radius); color: var(--danger);
+      font-size: 13px;
+    }
+
+    .empty-state { text-align: center; padding: 32px 20px; color: var(--text-muted); }
+    .empty-state-icon { font-size: 36px; margin-bottom: 10px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ── Inventory table ── */
+
+    .inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    .inv-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 2px solid var(--border);
+      background: var(--bg);
+      white-space: nowrap;
+    }
+
+    .inv-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .inv-table tr:last-child td { border-bottom: none; }
+    .inv-table tbody tr:hover td { background: var(--primary-light); }
+
+    /* ── Cell type renderers ── */
+
+    .cell-name { font-weight: 500; color: var(--text); }
+    .cell-mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--text-muted); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-archived  { background: var(--warning-bg); color: var(--warning); }
+    .badge-default   { background: var(--primary-light); color: var(--primary-dark); }
+    .badge-type      { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-dash      { color: var(--text-muted); font-weight: 400; }
+
+    /* Protection badge (purgeProtectedBadge column) */
+    .protection-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid #FFD580;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: default;
+      position: relative;
+    }
+
+    .protection-badge:hover::after {
+      content: "This object type is excluded from purge cascade operations";
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--text);
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    /* Type-level protection notice in grid header area */
+    .type-protection-notice {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid #FFD580;
+      border-radius: var(--radius-lg);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ── Pagination ── */
+
+    .pagination-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 0 0;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+    }
+
+    .pagination-btns { display: flex; gap: 8px; }
+
+    /* ── Utility ── */
+    .hidden { display: none !important; }
+    .mb-0   { margin-bottom: 0 !important; }
+  </style>
+</head>
+<body>
+<div class="container" style="max-width: 1200px;">
+
+  <div class="page-header">
+    <h1>Resilience Module</h1>
+    <p>Protected Object Inventory — inspect Jira objects and their purge cascade protection status.</p>
+  </div>
+
+  <div class="resilience-layout">
+
+    <!-- ── Sidebar ── -->
+    <nav class="resilience-sidebar" aria-label="Object type navigation">
+      <div class="card" style="padding: 12px 8px;">
+        <div class="sidebar-section-label">Object Types</div>
+        <div id="sidebar-items" role="listbox" aria-label="Select object type"></div>
+      </div>
+    </nav>
+
+    <!-- ── Main inventory panel ── -->
+    <div class="resilience-main">
+
+      <!-- Loading skeleton -->
+      <div id="inv-skeleton" class="card hidden" aria-live="polite" aria-label="Loading inventory">
+        <div class="skeleton-list">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row"></div>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div id="inv-error" class="card hidden" role="alert">
+        <div class="inline-error">
+          <span aria-hidden="true">&#9888;</span>
+          <span id="inv-error-msg">An error occurred while loading the inventory.</span>
+        </div>
+      </div>
+
+      <!-- Inventory content -->
+      <div id="inv-content" class="card hidden">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+          <div>
+            <div class="card-title" id="inv-title">Inventory</div>
+            <div id="inv-subtitle" class="card-subtitle mb-0"></div>
+          </div>
+          <div id="inv-protection-notice" class="hidden">
+            <span class="type-protection-notice">
+              <span aria-hidden="true">&#128274;</span>
+              Protected from purge cascade
+            </span>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table class="inv-table" id="inv-table" aria-label="Object inventory">
+            <thead id="inv-thead"></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-bar" id="inv-pagination">
+          <span id="inv-pagination-info" aria-live="polite"></span>
+          <div class="pagination-btns">
+            <button class="btn" id="btn-prev" onclick="goPage(-1)" disabled aria-label="Previous page">&#8592; Prev</button>
+            <button class="btn" id="btn-next" onclick="goPage(1)"  disabled aria-label="Next page">Next &#8594;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="inv-empty" class="card hidden" role="status">
+        <div class="empty-state">
+          <div class="empty-state-icon" aria-hidden="true">&#128203;</div>
+          <p><strong>No items found</strong></p>
+          <p style="margin-top:8px">No objects of this type are currently in the inventory.</p>
+        </div>
+      </div>
+
+    </div><!-- /.resilience-main -->
+
+  </div><!-- /.resilience-layout -->
+
+</div><!-- /.container -->
+
+<script>
+'use strict';
+
+/* ── Sidebar registry (mirrors resilienceRegistry.js SIDEBAR_REGISTRY) ── */
+const SIDEBAR_REGISTRY = [
+  {
+    id: 'projects',
+    label: 'Projects',
+    nodeType: 'JiraProjectNode',
+    defaultSelected: true,
+    purgeProtected: false,
+    icon: '&#128193;',   // 📁
+    apiSlug: 'projects',
+  },
+  {
+    id: 'workflows',
+    label: 'Workflows',
+    nodeType: 'JiraWorkflowNode',
+    defaultSelected: false,
+    purgeProtected: true,
+    icon: '&#128260;',   // 🔄
+    apiSlug: 'workflows',
+  },
+  {
+    id: 'custom-fields',
+    label: 'Custom Fields',
+    nodeType: 'JiraCustomFieldNode',
+    defaultSelected: false,
+    purgeProtected: true,
+    icon: '&#128295;',   // 🔧
+    apiSlug: 'custom-fields',
+  },
+];
+
+/* ── State ── */
+let _activeItem = null;   // SidebarItem currently selected
+let _currentPage = 1;
+let _currentPageSize = 25;
+let _currentTotal = 0;
+let _loading = false;
+
+/* ── DOM helpers ── */
+function qs(id)     { return document.getElementById(id); }
+function show(id)   { const el = qs(id); if (el) el.classList.remove('hidden'); }
+function hide(id)   { const el = qs(id); if (el) el.classList.add('hidden'); }
+
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ── Relative time helper ── */
+function relativeTime(isoString) {
+  if (!isoString) return '—';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  if (isNaN(diffMs)) return isoString;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60)   return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60)   return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)    return `${diffHr} h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} d ago`;
+}
+
+/* ── Sidebar rendering ── */
+
+function buildSidebar() {
+  const container = qs('sidebar-items');
+  container.innerHTML = '';
+
+  for (const item of SIDEBAR_REGISTRY) {
+    const div = document.createElement('div');
+    div.className = 'sidebar-item';
+    div.setAttribute('role', 'option');
+    div.setAttribute('tabindex', '0');
+    div.setAttribute('data-id', item.id);
+    div.setAttribute('aria-selected', item.defaultSelected ? 'true' : 'false');
+    div.setAttribute('aria-label',
+      item.purgeProtected
+        ? `${item.label} — Protected from purge cascade`
+        : item.label
+    );
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'sidebar-item-icon';
+    iconSpan.setAttribute('aria-hidden', 'true');
+    iconSpan.innerHTML = item.icon;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'sidebar-item-label';
+    labelSpan.textContent = item.label;
+
+    div.appendChild(iconSpan);
+    div.appendChild(labelSpan);
+
+    if (item.purgeProtected) {
+      const lockSpan = document.createElement('span');
+      lockSpan.className = 'sidebar-item-lock';
+      lockSpan.setAttribute('aria-hidden', 'true');
+      lockSpan.setAttribute('data-tooltip', 'Protected from purge cascade');
+      lockSpan.innerHTML = '&#128274;'; // 🔒
+      div.appendChild(lockSpan);
+    }
+
+    div.addEventListener('click', () => selectItem(item));
+    div.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectItem(item);
+      }
+    });
+
+    container.appendChild(div);
+  }
+}
+
+function setActiveSidebarItem(item) {
+  const container = qs('sidebar-items');
+  for (const el of container.querySelectorAll('.sidebar-item')) {
+    const isActive = el.getAttribute('data-id') === item.id;
+    el.classList.toggle('active', isActive);
+    el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  }
+}
+
+/* ── Item selection ── */
+
+function selectItem(item) {
+  if (_loading) return;
+  _activeItem = item;
+  _currentPage = 1;
+  setActiveSidebarItem(item);
+  loadInventory();
+}
+
+/* ── Inventory loading ── */
+
+async function loadInventory() {
+  if (!_activeItem) return;
+  _loading = true;
+
+  hide('inv-content');
+  hide('inv-empty');
+  hide('inv-error');
+  show('inv-skeleton');
+
+  try {
+    const params = new URLSearchParams({
+      page: _currentPage,
+      pageSize: _currentPageSize,
+    });
+    const url = `/api/v1/resilience/inventory/${_activeItem.apiSlug}?${params}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError(data.message || `Request failed (${res.status})`);
+      return;
+    }
+
+    _currentTotal = data.total || 0;
+    renderInventory(data);
+
+  } catch (err) {
+    showError(`Network error: ${escHtml(err.message)}`);
+  } finally {
+    hide('inv-skeleton');
+    _loading = false;
+  }
+}
+
+/* ── Error helper ── */
+
+function showError(msg) {
+  hide('inv-skeleton');
+  hide('inv-content');
+  hide('inv-empty');
+  qs('inv-error-msg').textContent = msg;
+  show('inv-error');
+}
+
+/* ── Inventory render ── */
+
+function renderInventory(data) {
+  const { nodeType, page, pageSize, total, purgeProtected, items = [], columns = [] } = data;
+
+  // Empty state
+  if (items.length === 0) {
+    hide('inv-content');
+    show('inv-empty');
+    return;
+  }
+
+  // Update header
+  const titleEl = qs('inv-title');
+  titleEl.textContent = _activeItem ? _activeItem.label : nodeType;
+
+  const subtitleEl = qs('inv-subtitle');
+  const startItem = (page - 1) * pageSize + 1;
+  const endItem   = Math.min(page * pageSize, total);
+  subtitleEl.textContent =
+    `Showing ${startItem}–${endItem} of ${total.toLocaleString()} object${total !== 1 ? 's' : ''}`;
+
+  // Protection notice (type-level)
+  if (purgeProtected) {
+    show('inv-protection-notice');
+  } else {
+    hide('inv-protection-notice');
+  }
+
+  // Render table header
+  renderTableHead(columns);
+
+  // Render table rows
+  renderTableBody(columns, items, purgeProtected);
+
+  // Update pagination
+  renderPagination(page, pageSize, total);
+
+  show('inv-content');
+}
+
+function renderTableHead(columns) {
+  const thead = qs('inv-thead');
+  const tr = document.createElement('tr');
+
+  for (const col of columns) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = col.label;
+    if (!col.sortable) th.style.color = 'var(--text-muted)';
+    tr.appendChild(th);
+  }
+
+  thead.innerHTML = '';
+  thead.appendChild(tr);
+}
+
+function renderTableBody(columns, items, purgeProtected) {
+  const tbody = qs('inv-tbody');
+  tbody.innerHTML = '';
+
+  for (const item of items) {
+    const tr = document.createElement('tr');
+
+    for (const col of columns) {
+      const td = document.createElement('td');
+      td.innerHTML = renderCell(col, item);
+      tbody.appendChild === undefined ? tr.appendChild(td) : tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+  }
+}
+
+function renderCell(col, item) {
+  const val = item[col.id];
+
+  // Static badge for purgeProtectedBadge column
+  if (col.id === 'purgeProtectedBadge') {
+    return `<span class="protection-badge" role="img"
+      aria-label="Protected from purge cascade">
+      &#128274; Protected
+    </span>`;
+  }
+
+  // Datetime — relative
+  if (col.type === 'datetime') {
+    const iso = val || '';
+    return `<span title="${escHtml(iso)}">${escHtml(relativeTime(iso))}</span>`;
+  }
+
+  // Boolean — context-aware badge
+  if (col.type === 'boolean') {
+    if (col.id === 'archived') {
+      return val
+        ? `<span class="badge badge-archived">Archived</span>`
+        : `<span class="badge-dash">—</span>`;
+    }
+    if (col.id === 'isDefault') {
+      return val
+        ? `<span class="badge badge-default">Default</span>`
+        : `<span class="badge-dash">—</span>`;
+    }
+    return val
+      ? `<span class="badge badge-default">Yes</span>`
+      : `<span class="badge-dash">—</span>`;
+  }
+
+  // Enum (projectTypeKey)
+  if (col.type === 'enum') {
+    const display = String(val || '').replace(/_/g, ' ');
+    return `<span class="badge badge-type">${escHtml(display)}</span>`;
+  }
+
+  // Name — primary cell
+  if (col.id === 'name') {
+    return `<span class="cell-name">${escHtml(val ?? '—')}</span>`;
+  }
+
+  // IDs and field IDs — mono
+  if (col.id === 'workflowId' || col.id === 'fieldId' || col.id === 'projectKey') {
+    return `<code class="cell-mono">${escHtml(val ?? '—')}</code>`;
+  }
+
+  // Number
+  if (col.type === 'number') {
+    return val != null
+      ? `<span>${Number(val).toLocaleString()}</span>`
+      : `<span class="badge-dash">—</span>`;
+  }
+
+  // Default: plain text
+  return escHtml(val ?? '—');
+}
+
+/* ── Pagination ── */
+
+function renderPagination(page, pageSize, total) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageInfo   = qs('inv-pagination-info');
+  pageInfo.textContent = `Page ${page} of ${totalPages}`;
+
+  const prevBtn = qs('btn-prev');
+  const nextBtn = qs('btn-next');
+
+  prevBtn.disabled = page <= 1;
+  nextBtn.disabled = page >= totalPages;
+}
+
+function goPage(delta) {
+  if (_loading) return;
+  const totalPages = Math.max(1, Math.ceil(_currentTotal / _currentPageSize));
+  const newPage    = _currentPage + delta;
+  if (newPage < 1 || newPage > totalPages) return;
+  _currentPage = newPage;
+  loadInventory();
+}
+
+/* ── Init ── */
+
+function init() {
+  buildSidebar();
+
+  // Auto-select the defaultSelected item (Projects)
+  const defaultItem = SIDEBAR_REGISTRY.find(item => item.defaultSelected) || SIDEBAR_REGISTRY[0];
+  selectItem(defaultItem);
+}
+
+// Run on DOMContentLoaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

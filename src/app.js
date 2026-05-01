@@ -11,6 +11,7 @@ const backupPointsRouter = require('./routes/backupPoints');
 const preferencesRouter = require('./routes/preferences');
 const restoreRouter = require('./routes/restore');
 const sdiRouter = require('./routes/sdi');
+const resilienceRouter = require('./routes/resilience');
 const { assertPurgeCascadeAllowed } = require('./services/purgeCascade');
 
 const app = express();
@@ -38,6 +39,9 @@ app.use('/api/v1/preferences', preferencesRouter);
 
 // Sprint 5 — SDI Teaser routes
 app.use('/api/v1/sdi', sdiRouter);
+
+// Sprint 6 — Resilience Module routes
+app.use('/api/v1/resilience', resilienceRouter);
 
 // Also mount at /api/ (without v1) for acceptance criteria compatibility
 app.use('/api/search', searchRouter);

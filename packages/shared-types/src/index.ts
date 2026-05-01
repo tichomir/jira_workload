@@ -126,6 +126,31 @@ export type {
   SdiErrorCode,
 } from './sdi';
 
+// Resilience Module — Protected Object Inventory
+export {
+  PURGE_CASCADE_EXCLUDED_NODE_TYPES,
+  SIDEBAR_REGISTRY,
+  COLUMN_REGISTRY,
+  PROJECT_COLUMNS,
+  WORKFLOW_COLUMNS,
+  CUSTOM_FIELD_COLUMNS,
+} from './resilience';
+export type {
+  InventoryNodeType,
+  PurgeCascadeExcludedNodeType,
+  SidebarItem,
+  ColumnType,
+  ColumnDefinition,
+  ResilienceInventoryRequest,
+  InventoryRowBase,
+  ProjectInventoryRow,
+  WorkflowInventoryRow,
+  CustomFieldInventoryRow,
+  InventoryRow,
+  ResilienceInventoryResponse,
+  ResilienceErrorCode,
+} from './resilience';
+
 // Platform preferences
 export {
   SHOW_UNCHANGED_OBJECTS_KEY,
