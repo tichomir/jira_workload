@@ -45,6 +45,28 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # ─── Optional: Caddy HTTPS sidecar (Option B — offline HTTPS) ──────────────
+  # Uncomment this service to enable a local HTTPS reverse proxy on port 4443.
+  # Requires:
+  #   1. mkcert installed and mkcert -install run on your machine.
+  #   2. Certificates generated: mkcert localhost 127.0.0.1 ::1
+  #   3. Cert files placed in ./certs/ (gitignored — do not commit).
+  #   4. A Caddyfile in the project root (copy from Caddyfile.example).
+  #   5. ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback in .env
+  #
+  # See OAUTH_SETUP.md § 2a Option B for the full step-by-step guide.
+  #
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "4443:4443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./certs:/certs:ro
+  #   depends_on:
+  #     - app
+  #   restart: unless-stopped
+
 # ─── Named volumes (persisted across container restarts) ──────────────────────
 volumes:
   backup_data:

@@ -248,3 +248,15 @@ Deliverables:
 - ✅ QA: validate Podman deployment and architectural doc accuracy — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 9 | 2026-05-01 | ✅ done | 13 SP
+**Goal:** A couple of problems on the way, let's fix them
+* If the callback URL is not https, I will get an error when I click on connect to Atlassian - Redirect URI must be a valid HTTPS URL
+* We need better onboarding docuemntation in relation wtih the above
+
+**Delivered:**
+- ✅ Diagnose and document HTTPS callback URL constraint for local dev — Software Architect (⚡ Quick, 2 SP)
+- ✅ Implement HTTPS callback URL support for local development environment — Devops Engineer (◉ Deep, 5 SP)
+- ✅ Update onboarding documentation to cover HTTPS callback URL setup — Software Architect (◈ Standard, 3 SP)
+- ✅ QA: validate HTTPS OAuth flow and documentation accuracy — Qa Engineer (◈ Standard, 3 SP)
+
+---

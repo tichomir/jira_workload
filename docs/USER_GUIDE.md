@@ -23,17 +23,60 @@ the application at **http://localhost:4000**.
 
 ## Module 1: OAuth Connection
 
-### Connecting to Jira Cloud
+### Before You Connect — HTTPS Redirect URI Requirement
+
+Atlassian requires an **HTTPS** callback URL for all OAuth 2.0 (3LO) apps — including
+local development. If `ATLASSIAN_REDIRECT_URI` in `.env` starts with `http://`, clicking
+**Connect with Atlassian** will fail immediately with:
+
+```
+Redirect URI must be a valid HTTPS URL
+```
+
+**You must complete these prerequisites before connecting:**
+
+1. Set up a local HTTPS tunnel or reverse proxy — see [OAUTH_SETUP.md §2a](../OAUTH_SETUP.md)
+   for ngrok (recommended) and Caddy instructions.
+2. Register an OAuth 2.0 app in the [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/)
+   with your HTTPS callback URL, e.g.:
+
+   ```
+   https://abc123.ngrok-free.app/oauth/callback
+   ```
+
+   or, if using Caddy:
+
+   ```
+   https://localhost:4443/oauth/callback
+   ```
+
+3. Set `ATLASSIAN_REDIRECT_URI` in `.env` to the **same HTTPS URL** (must match exactly).
+4. Restart the stack after editing `.env`.
+
+For full setup instructions see [OAUTH_SETUP.md](../OAUTH_SETUP.md) and the
+[Installation Guide](INSTALLATION.md#atlassian-app-registration--oauth-setup).
+
+---
+
+### Connect to Atlassian Walkthrough
 
 1. Open **http://localhost:4000/connect.html**
 
 ![Connect Page — OAuth wizard](images/connect-page.png)
 
 2. Choose a connection method:
-   - **Express path**: Click "Connect with Atlassian" — you are redirected to
-     Atlassian to authorise the application, then returned automatically.
-   - **Manual path**: Enter your Client ID, Client Secret, Site URL, and
-     Redirect URI directly.
+
+   **Express path** (recommended):
+   - Click **Connect with Atlassian**
+   - You are redirected to `auth.atlassian.com` via your HTTPS redirect URI
+     (e.g. `https://abc123.ngrok-free.app/oauth/callback`)
+   - Authorise the application in the Atlassian consent screen
+   - Atlassian redirects back to the callback URL — the connection completes automatically
+
+   **Manual path**:
+   - Enter your **Client ID**, **Client Secret**, and **Site URL** directly in the form
+   - Enter the same HTTPS **Redirect URI** that is registered in the Atlassian Developer Console
+   - Click **Connect**
 
 ![Express OAuth redirect to Atlassian](images/oauth-atlassian-redirect.png)
 
@@ -305,5 +348,6 @@ podman-compose -f podman-compose.yml exec app sh
 |---|---|
 | Server fails to start | Check that all required env vars are set in `.env`; run `podman-compose -f podman-compose.yml logs app` |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` error | Must be exactly 64 hex characters — regenerate with `openssl rand -hex 32` |
+| `Redirect URI must be a valid HTTPS URL` | `ATLASSIAN_REDIRECT_URI` in `.env` uses `http://` — Atlassian requires HTTPS | Set up ngrok or Caddy per [OAUTH_SETUP.md §2a](../OAUTH_SETUP.md); update the Callback URL in the Atlassian Developer Console and `ATLASSIAN_REDIRECT_URI` in `.env` |
 | OAuth redirect mismatch | Ensure `ATLASSIAN_REDIRECT_URI` in `.env` exactly matches the URI in the Atlassian Developer Console |
 | Webhooks not firing | Set `WEBHOOK_CALLBACK_URL` to a publicly reachable URL; use ngrok for local dev |

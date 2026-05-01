@@ -51,7 +51,7 @@ Open `.env` and fill in:
 ```
 ATLASSIAN_CLIENT_ID=<your-client-id>
 ATLASSIAN_CLIENT_SECRET=<your-client-secret>
-ATLASSIAN_REDIRECT_URI=http://localhost:4000/oauth/callback
+ATLASSIAN_REDIRECT_URI=https://<your-ngrok-id>.ngrok-free.app/oauth/callback  # must be HTTPS — see OAUTH_SETUP.md § 2a
 OAUTH_TOKEN_ENCRYPTION_KEY=<64-hex-chars>   # openssl rand -hex 32
 ```
 
@@ -89,6 +89,95 @@ It covers:
 - End-to-end data flow diagrams (backup and restore paths)
 - Key concepts: backup points, conflict modes, purge cascade boundary, protected objects
 - Deployment topology: what runs locally in Podman vs. what is in Atlassian cloud
+
+---
+
+## Atlassian App Registration & OAuth Setup
+
+Before you can click **Connect to Atlassian**, you must register an OAuth 2.0 (3LO) app
+in the Atlassian Developer Console and configure an **HTTPS** redirect URI.
+
+### Why HTTPS?
+
+Atlassian's OAuth 2.0 platform rejects all non-HTTPS callback URLs — including
+`http://localhost`. Using an `http://` redirect URI produces this error at connect time:
+
+```
+Redirect URI must be a valid HTTPS URL
+```
+
+This is enforced at both the Developer Console (the form will not save an `http://` URL)
+and at the Atlassian authorization server at runtime.
+
+### Step-by-step: register your app
+
+1. Go to [developer.atlassian.com/console/myapps/](https://developer.atlassian.com/console/myapps/)
+2. Click **Create** → **OAuth 2.0 integration** → enter a name (e.g. `jira-workload-local`) → **Create**
+3. Open the **Authorization** tab → **OAuth 2.0 (3LO)** → **Add** next to **Callback URL**
+4. Enter your HTTPS redirect URI (see options below) and click **Save changes**
+5. Open the **Permissions** tab → add the required Jira scopes (see `OAUTH_SETUP.md §3`)
+6. Open the **Settings** tab → copy **Client ID** and **Client Secret** into `.env`
+
+### Choosing a local HTTPS redirect URI
+
+**Option A — ngrok (recommended, quickest)**
+
+```bash
+# 1. Install ngrok and authenticate
+brew install ngrok           # macOS
+ngrok config add-authtoken <your-ngrok-token>
+
+# 2. Start the app stack, then in a second terminal:
+ngrok http 4000
+# → shows: https://abc123.ngrok-free.app -> http://localhost:4000
+```
+
+Redirect URI to register in the Atlassian Developer Console:
+
+```
+https://abc123.ngrok-free.app/oauth/callback
+```
+
+Set in `.env`:
+
+```dotenv
+ATLASSIAN_REDIRECT_URI=https://abc123.ngrok-free.app/oauth/callback
+```
+
+**Option B — Caddy + mkcert (offline / stable URL)**
+
+Redirect URI to register in the Atlassian Developer Console:
+
+```
+https://localhost:4443/oauth/callback
+```
+
+Set in `.env`:
+
+```dotenv
+ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
+```
+
+See **[OAUTH_SETUP.md](OAUTH_SETUP.md)** for full step-by-step instructions for both options,
+including Windows instructions and the Caddy Podman Compose snippet.
+
+### Connection flows
+
+| Flow | How to use |
+|---|---|
+| **Express path** | Click **Connect with Atlassian** on `/connect.html` — you are redirected to Atlassian to authorise, then returned to the callback URL automatically |
+| **Manual path** | Enter Client ID, Client Secret, Site URL, and the Redirect URI directly in the form on `/connect.html` |
+
+Both flows require the redirect URI in `.env` to **exactly match** the one registered in
+the Atlassian Developer Console — including path, no trailing slash.
+
+### Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `Redirect URI must be a valid HTTPS URL` | `ATLASSIAN_REDIRECT_URI` starts with `http://` | Use an ngrok or Caddy HTTPS URL — see OAUTH_SETUP.md §2a |
+| `redirect_uri_mismatch` | URI in `.env` does not exactly match the one in the Atlassian Console | Copy the URI character-for-character; check for trailing slashes |
+| App not saved in Developer Console | You tried to enter an `http://` callback — the Console rejects it silently or shows an inline error | Enter an `https://` URL |
 
 ---
 
@@ -137,7 +226,7 @@ Required at startup:
 |---|---|
 | `ATLASSIAN_CLIENT_ID` | Atlassian OAuth app Client ID |
 | `ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth app Client Secret |
-| `ATLASSIAN_REDIRECT_URI` | Registered redirect URI (e.g. `http://localhost:4000/oauth/callback`) |
+| `ATLASSIAN_REDIRECT_URI` | Registered HTTPS redirect URI — must be `https://` (see `OAUTH_SETUP.md` § 2a) |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` | 64-char hex AES-256-GCM key — generate with `openssl rand -hex 32` |
 
 ---

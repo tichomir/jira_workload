@@ -867,7 +867,161 @@ describe('Hard Delete — DELETE /api/v1/integrations/:id with deleteMode=hard',
 });
 
 // ============================================================
-// 9. PROJECT SCOPE CONFIGURATION
+// 9. HTTPS REDIRECT URI VALIDATION (Sprint 8 — HTTPS onboarding fix)
+// Validates that the HTTPS enforcement behaves exactly as documented in
+// INSTALLATION.md, OAUTH_SETUP.md, and the USER_GUIDE for both paths.
+// ============================================================
+describe('HTTPS redirect URI validation — Express and Manual paths', () => {
+  // ── Express path ─────────────────────────────────────────────────────────
+
+  test('Express: ngrok-style URL (https://*.ngrok-free.app) is accepted', async () => {
+    const ngrokUri = 'https://abc123.ngrok-free.app/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-ngrok', redirectUri: ngrokUri });
+
+    expect(res.status).toBe(200);
+    const url = new URL(res.body.authorizationUrl);
+    expect(url.searchParams.get('redirect_uri')).toBe(ngrokUri);
+  });
+
+  test('Express: Caddy localhost HTTPS URL (https://localhost:4443) is accepted', async () => {
+    const caddyUri = 'https://localhost:4443/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-caddy', redirectUri: caddyUri });
+
+    expect(res.status).toBe(200);
+    const url = new URL(res.body.authorizationUrl);
+    expect(url.searchParams.get('redirect_uri')).toBe(caddyUri);
+  });
+
+  test('Express: HTTP-only URI returns the exact error message shown in troubleshooting docs', async () => {
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-http', redirectUri: 'http://localhost:4000/oauth/callback' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('INVALID_REDIRECT_URI');
+    // Message must match the string documented in INSTALLATION.md troubleshooting table
+    expect(res.body.message).toBe('Redirect URI must be a valid HTTPS URL');
+  });
+
+  test('Express: falls back to ATLASSIAN_REDIRECT_URI env var (HTTPS) when no redirectUri in body', async () => {
+    // process.env.ATLASSIAN_REDIRECT_URI is set to 'https://example.com/callback' in test setup
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-env-fallback' });
+
+    expect(res.status).toBe(200);
+    const url = new URL(res.body.authorizationUrl);
+    expect(url.searchParams.get('redirect_uri')).toBe('https://example.com/callback');
+  });
+
+  test('Express: HTTPS URI with custom port is accepted (non-443)', async () => {
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-port', redirectUri: 'https://127.0.0.1:8443/oauth/callback' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.authorizationUrl).toBeDefined();
+  });
+
+  // ── Manual path ──────────────────────────────────────────────────────────
+
+  test('Manual: ngrok-style URL (https://*.ngrok-free.app) is accepted', async () => {
+    const ngrokUri = 'https://abc123.ngrok-free.app/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/manual/connect')
+      .send({
+        clientId: 'manual-client-id-xyz',
+        clientSecret: 'manual-secret-at-least-16chars',
+        siteUrl: 'https://mycompany.atlassian.net',
+        redirectUri: ngrokUri,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.confirmationDetails.redirectUri).toBe(ngrokUri);
+  });
+
+  test('Manual: Caddy localhost HTTPS URL (https://localhost:4443) is accepted', async () => {
+    const caddyUri = 'https://localhost:4443/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/manual/connect')
+      .send({
+        clientId: 'manual-client-id-xyz',
+        clientSecret: 'manual-secret-at-least-16chars',
+        siteUrl: 'https://mycompany.atlassian.net',
+        redirectUri: caddyUri,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.confirmationDetails.redirectUri).toBe(caddyUri);
+  });
+
+  test('Manual: HTTP-only URI is rejected with INVALID_REDIRECT_URI', async () => {
+    const res = await request(app)
+      .post('/api/v1/oauth/manual/connect')
+      .send({
+        clientId: 'manual-client-id-xyz',
+        clientSecret: 'manual-secret-at-least-16chars',
+        siteUrl: 'https://mycompany.atlassian.net',
+        redirectUri: 'http://localhost:4000/oauth/callback',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('INVALID_REDIRECT_URI');
+    expect(res.body.message).toContain('HTTPS URL');
+  });
+
+  test('Manual: missing redirectUri is rejected with INVALID_REDIRECT_URI', async () => {
+    const res = await request(app)
+      .post('/api/v1/oauth/manual/connect')
+      .send({
+        clientId: 'manual-client-id-xyz',
+        clientSecret: 'manual-secret-at-least-16chars',
+        siteUrl: 'https://mycompany.atlassian.net',
+        // redirectUri omitted
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('INVALID_REDIRECT_URI');
+  });
+
+  // ── Confirmation step: redirect URI forwarded to Atlassian exactly ────────
+
+  test('Express: redirect_uri in Atlassian auth URL matches the HTTPS URI provided', async () => {
+    const uri = 'https://stable.ngrok-free.app/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/express/redirect')
+      .send({ userId: 'user-match', redirectUri: uri });
+
+    expect(res.status).toBe(200);
+    const authUrl = new URL(res.body.authorizationUrl);
+    expect(authUrl.hostname).toBe('auth.atlassian.com');
+    expect(authUrl.searchParams.get('redirect_uri')).toBe(uri);
+  });
+
+  test('Manual: redirect_uri in Atlassian auth URL matches the HTTPS URI provided', async () => {
+    const uri = 'https://localhost:4443/oauth/callback';
+    const res = await request(app)
+      .post('/api/v1/oauth/manual/connect')
+      .send({
+        clientId: 'manual-client-id-xyz',
+        clientSecret: 'manual-secret-at-least-16chars',
+        siteUrl: 'https://mycompany.atlassian.net',
+        redirectUri: uri,
+      });
+
+    expect(res.status).toBe(200);
+    const authUrl = new URL(res.body.authorizationUrl);
+    expect(authUrl.hostname).toBe('auth.atlassian.com');
+    expect(authUrl.searchParams.get('redirect_uri')).toBe(uri);
+  });
+});
+
+// ============================================================
+// 10. PROJECT SCOPE CONFIGURATION
 // ============================================================
 describe('Project scope configuration — PATCH /api/v1/integrations/:id/project-scope', () => {
   test('new connection defaults: projectScopeMode=all, selectedProjectIds=[], includeArchivedProjects=false', async () => {

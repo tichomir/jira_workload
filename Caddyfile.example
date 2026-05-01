@@ -1,0 +1,40 @@
+# Caddyfile.example — Local HTTPS reverse proxy for jira_workload (Option B)
+#
+# This file enables HTTPS on localhost:4443 and proxies to the jira_workload
+# backend container, satisfying Atlassian's HTTPS callback URL requirement
+# without an internet tunnel.
+#
+# Setup (one-time per developer machine):
+#   1. Install mkcert and create a local CA:
+#        macOS:   brew install mkcert && mkcert -install
+#        Linux:   sudo apt install mkcert && mkcert -install
+#        Windows: choco install mkcert; mkcert -install  (elevated PowerShell)
+#
+#   2. Generate a certificate for localhost:
+#        mkcert localhost 127.0.0.1 ::1
+#      This produces: localhost+2.pem  and  localhost+2-key.pem
+#
+#   3. Move the certificate files into the certs/ directory:
+#        mkdir -p certs
+#        mv localhost+2.pem     certs/
+#        mv localhost+2-key.pem certs/
+#
+#   4. Copy this file to Caddyfile (no .example extension):
+#        cp Caddyfile.example Caddyfile
+#
+#   5. Uncomment the caddy service in podman-compose.yml (see comment block there).
+#
+#   6. Set in .env:
+#        ATLASSIAN_REDIRECT_URI=https://localhost:4443/oauth/callback
+#
+#   7. Register https://localhost:4443/oauth/callback in the Atlassian Developer Console.
+#
+#   8. Restart the Podman stack: ./start.sh  (or .\start.ps1 on Windows)
+#
+# See OAUTH_SETUP.md § 2a Option B for the full guide.
+# The certs/ directory is gitignored — never commit private key files.
+
+https://localhost:4443 {
+    tls /certs/localhost+2.pem /certs/localhost+2-key.pem
+    reverse_proxy app:4000
+}

@@ -67,7 +67,8 @@ Open `.env` in a text editor and set the four required values:
 ```dotenv
 ATLASSIAN_CLIENT_ID=<from Atlassian Developer Console>
 ATLASSIAN_CLIENT_SECRET=<from Atlassian Developer Console>
-ATLASSIAN_REDIRECT_URI=http://localhost:4000/oauth/callback
+# ⚠ Must be HTTPS — see OAUTH_SETUP.md § 2a for ngrok / Caddy setup
+ATLASSIAN_REDIRECT_URI=https://<your-ngrok-id>.ngrok-free.app/oauth/callback
 OAUTH_TOKEN_ENCRYPTION_KEY=<64 hex chars — see generation command below>
 ```
 
@@ -179,13 +180,146 @@ so that `podman-compose` can locate it even if `DOCKER_HOST` is not set in your 
 
 ---
 
-## Atlassian OAuth Setup
+## Atlassian App Registration & OAuth Setup
 
-See [OAUTH_SETUP.md](../OAUTH_SETUP.md) for step-by-step Atlassian Developer
-Console configuration.
+### Why you need an HTTPS redirect URI
 
-The minimum scopes required are listed there. The Redirect URI registered in
-the Atlassian console **must exactly match** `ATLASSIAN_REDIRECT_URI` in `.env`.
+Atlassian's OAuth 2.0 (3LO) platform **requires all callback URLs to use HTTPS** —
+including during local development. If `ATLASSIAN_REDIRECT_URI` in `.env` starts
+with `http://` you will see this error when you click **Connect to Atlassian**:
+
+```
+Redirect URI must be a valid HTTPS URL
+```
+
+The Atlassian Developer Console also refuses to save any `http://` callback URL.
+You must use one of the HTTPS workarounds below before registering the app.
+
+---
+
+### Step 1 — Choose a local HTTPS approach
+
+#### Option A — ngrok (recommended)
+
+ngrok provides a publicly accessible `https://` URL that tunnels to your local
+Podman/Node.js server. No changes to the application or Podman Compose are required.
+
+```bash
+# Install ngrok
+brew install ngrok                 # macOS
+winget install ngrok.ngrok         # Windows
+# Linux: see https://ngrok.com/download for the apt/yum instructions
+
+# Authenticate (one-time)
+ngrok config add-authtoken <your-ngrok-auth-token>
+
+# Start your Podman stack first, then in a second terminal:
+ngrok http 4000
+# Output: Forwarding  https://abc123.ngrok-free.app -> http://localhost:4000
+```
+
+Your redirect URI is:
+
+```
+https://abc123.ngrok-free.app/oauth/callback
+```
+
+> **Note:** The free-tier URL changes each time you restart `ngrok http 4000`.
+> When it changes, update the callback URL in both `.env` and the Atlassian Developer
+> Console. ngrok paid plans offer a stable custom subdomain.
+
+#### Option B — Caddy + mkcert (offline / stable URL)
+
+If you need a stable `https://localhost:4443` URL that works without internet access:
+
+```bash
+# Install mkcert and create a local CA + certificate
+brew install mkcert && mkcert -install  # macOS
+sudo apt install mkcert && mkcert -install  # Linux
+choco install mkcert && mkcert -install     # Windows (elevated PowerShell)
+
+mkcert localhost 127.0.0.1 ::1
+mkdir -p certs
+mv localhost+2.pem certs/
+mv localhost+2-key.pem certs/
+```
+
+Copy `Caddyfile.example` to `Caddyfile` in the project root (already contains the
+correct configuration), then add the Caddy service to `podman-compose.yml`:
+
+```yaml
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "4443:4443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    depends_on:
+      - app
+```
+
+Your redirect URI is:
+
+```
+https://localhost:4443/oauth/callback
+```
+
+---
+
+### Step 2 — Register the app in the Atlassian Developer Console
+
+1. Go to [developer.atlassian.com/console/myapps/](https://developer.atlassian.com/console/myapps/)
+2. Click **Create** → **OAuth 2.0 integration**
+3. Enter an app name (e.g. `jira-workload-local`) → **Create**
+4. Open the **Authorization** tab → **OAuth 2.0 (3LO)** → click **Add** next to **Callback URL**
+5. Paste your HTTPS redirect URI from Step 1:
+
+   **ngrok:**
+   ```
+   https://abc123.ngrok-free.app/oauth/callback
+   ```
+
+   **Caddy:**
+   ```
+   https://localhost:4443/oauth/callback
+   ```
+
+6. Click **Save changes**
+
+---
+
+### Step 3 — Add required scopes
+
+1. Open the **Permissions** tab
+2. Add all required Jira API scopes — see [OAUTH_SETUP.md §3](../OAUTH_SETUP.md) for the
+   full scope list
+3. Click **Save**
+
+---
+
+### Step 4 — Copy credentials to `.env`
+
+1. Open the **Settings** tab → copy **Client ID** and **Client Secret**
+2. Set in `.env`:
+
+   ```dotenv
+   ATLASSIAN_CLIENT_ID=<paste Client ID here>
+   ATLASSIAN_CLIENT_SECRET=<paste Client Secret here>
+   ATLASSIAN_REDIRECT_URI=https://abc123.ngrok-free.app/oauth/callback
+   ```
+
+   The `ATLASSIAN_REDIRECT_URI` value must **exactly match** the Callback URL registered
+   in the Atlassian Developer Console — same scheme, host, port, and path; no trailing slash.
+
+3. Restart the Podman stack after saving `.env`:
+   ```bash
+   ./stop.sh && ./start.sh     # macOS / Linux
+   .\stop.ps1; .\start.ps1     # Windows PowerShell
+   ```
+
+See [OAUTH_SETUP.md](../OAUTH_SETUP.md) for the complete reference including all scopes,
+the token encryption key generation command, and default threshold values.
 
 ---
 
@@ -239,6 +373,7 @@ podman rmi jira-workload:latest
 |---|---|
 | Server fails to start | Verify all required env vars are set in `.env`; run `podman-compose -f podman-compose.yml logs app` to see the startup error |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` invalid | Must be exactly 64 hex characters; regenerate with `openssl rand -hex 32` (macOS/Linux) or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `Redirect URI must be a valid HTTPS URL` | `ATLASSIAN_REDIRECT_URI` starts with `http://` — Atlassian requires HTTPS for all callback URLs, including local development. Set `ATLASSIAN_REDIRECT_URI` to an ngrok or Caddy HTTPS URL — see **Atlassian App Registration & OAuth Setup** above |
 | OAuth redirect mismatch error | `ATLASSIAN_REDIRECT_URI` in `.env` must **exactly** match the Redirect URI registered in the Atlassian Developer Console — no trailing slash |
 | Webhooks not receiving events | Set `WEBHOOK_CALLBACK_URL` to a publicly reachable HTTPS URL; use [ngrok](https://ngrok.com) (`ngrok http 4000`) for local development |
 | Port 4000 already in use | Set `PORT=4001` (or any free port) in `.env`; the Podman port mapping updates automatically |
