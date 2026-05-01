@@ -71,7 +71,7 @@ Before starting the demo, ensure the following are in place:
    > podman-compose --file podman-compose.yml logs --follow app
    > ```
 
-5. Open a browser and navigate to **http://localhost:4000/connect.html**.
+5. Open a browser and navigate to **http://localhost:4000/** to see the central landing page with navigation links to all features.
 5. Alternatively, run the health check from a terminal:
    ```bash
    curl http://localhost:4000/health
@@ -84,7 +84,8 @@ Before starting the demo, ensure the following are in place:
   ```json
   { "status": "ok" }
   ```
-- The browser displays the **Connect Jira Cloud** page with the Express and Manual connection options visible.
+- The browser displays the **Jira Workload home page** with a navigation bar and links to Integrations, Backups, Browse, Resilience, and SDI.
+- Clicking **Add Integration** opens the **Connect Jira Cloud** page with Express and Manual connection options.
 
 ### Screenshot
 
@@ -100,7 +101,7 @@ Before starting the demo, ensure the following are in place:
 
 ### Steps
 
-1. Navigate to **http://localhost:4000/connect.html** in your browser.
+1. Navigate to **http://localhost:4000/** in your browser. Click **Add Integration** in the navigation bar or on the landing page, which takes you to **http://localhost:4000/integrations/jira/connect**.
 2. Click **"Connect with Atlassian"** (the Express path button).
 3. You are redirected to `auth.atlassian.com`. Sign in with your Atlassian account if prompted.
 4. On the permission consent screen, review the requested scopes and click **"Accept"**.
@@ -131,12 +132,17 @@ Before starting the demo, ensure the following are in place:
 
 ### Steps
 
-1. After completing Section 2 the browser will have redirected you to **`http://localhost:4000/manage.html?connectionId=<uuid>`**. Copy the full URL from the address bar for future reference. If you need to return here later, use that saved URL (the `connectionId` query parameter is required).
-2. Locate the connected integration in the list.
-3. Click **"Back Up Now"** next to the integration.
-4. The UI shows a progress indicator: _Backup running…_
-5. Wait for the status to change to **"Completed"** (may take 10–60 seconds depending on project size).
-6. Click the backup point timestamp to open the **Backup Point Detail** view.
+1. Navigate to the **Backups** page for your integration using any of these paths:
+   - Go to **http://localhost:4000/connections.html**, find your integration in the list, and click the **Backups** button.
+   - Navigate directly to **`http://localhost:4000/backups.html?connectionId=<your-connection-id>`** (the `connectionId` is shown in the URL after the OAuth callback completes).
+   - From `manage.html?connectionId=<uuid>`, click the **View Backups** link in the page header.
+2. On the Backups page you will see the backup history table for the selected integration (empty on a fresh connection).
+3. Click **"Trigger Backup Now"** at the top of the page.
+4. A success banner appears confirming the backup job was triggered (Job ID shown).
+5. The job status card appears with _Backup in progress_. The page polls the job every 3 seconds.
+6. When the job completes, the banner updates and the backup history table refreshes with the new backup point.
+
+> **Note:** The `connectionId` required in the URL is obtained automatically from the OAuth callback and is visible in the URL bar after completing Section 2. You can also find it on **http://localhost:4000/connections.html**.
 
 ### Expected Outcome
 
@@ -144,21 +150,24 @@ Before starting the demo, ensure the following are in place:
   - Status: `completed`
   - Timestamp: current date/time
   - Object counts for Issues, Workflows, Custom Fields, Attachments
-- The backup point detail shows a summary of what was captured.
+- Each backup point row has a **Restore** button for point-in-time restore.
 
 ### API verification (optional):
 
 ```bash
 INTEGRATION_ID="<your-integration-id>"
 
-# Trigger backup
+# Trigger backup — connection-centric alias (recommended)
 curl -s -X POST \
-  http://localhost:4000/api/v1/integrations/${INTEGRATION_ID}/backup \
-  -H "Content-Type: application/json" \
-  -d '{"scope": "all"}'
+  http://localhost:4000/api/connections/${INTEGRATION_ID}/backup
 
 # List backup points
-curl -s http://localhost:4000/api/v1/integrations/${INTEGRATION_ID}/backup-points \
+curl -s http://localhost:4000/api/connections/${INTEGRATION_ID}/backups \
+  | python3 -m json.tool
+
+# Poll job status (replace JOB_ID with the jobId from the trigger response)
+JOB_ID="<job-id-from-trigger>"
+curl -s http://localhost:4000/api/v1/integrations/${INTEGRATION_ID}/backup/${JOB_ID} \
   | python3 -m json.tool
 ```
 
@@ -386,9 +395,12 @@ The recording shows the complete flow from Podman startup to Resilience Module i
 
 | URL | What you'll see |
 |---|---|
-| http://localhost:4000/connect.html | OAuth connection wizard (Section 2) |
+| http://localhost:4000/ | **Central landing page** — start here; links to all features plus live connection status |
+| http://localhost:4000/connections.html | **All integrations** — list every connected Jira Cloud site; add, manage, or delete connections |
+| http://localhost:4000/backups.html?connectionId=&lt;id&gt; | **Backup management** — trigger a backup, view history, restore from any backup point (Section 3) |
+| http://localhost:4000/connect.html | OAuth connection wizard — Express or Manual path (Section 2) |
 | http://localhost:4000/callback.html | OAuth callback and scope validation result |
-| http://localhost:4000/manage.html | Integration management and backup history (Section 3) |
+| http://localhost:4000/manage.html?connectionId=&lt;id&gt; | Connection settings — project scope, token health, lifecycle |
 | http://localhost:4000/browse.html | Browse and search backed-up data (Section 4) |
 | http://localhost:4000/sdi.html | SDI findings dashboard (Section 6) |
 | http://localhost:4000/resilience.html | Protected Object Inventory (Section 7) |

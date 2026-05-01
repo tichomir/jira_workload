@@ -76,6 +76,37 @@ The application starts at **http://localhost:4000**.
 
 ---
 
+## Data Persistence & Upgrades
+
+All user-generated state (OAuth connections, backup metadata) is stored in a
+persistent `db_data` named volume — **outside the application source tree**.
+
+| What | Where |
+|---|---|
+| Connections & tokens | `db_data` volume → `/data/db.json` inside container |
+| Backup binary files | `backup_data` volume |
+| Exports | `export_data` volume |
+
+Named volumes survive `./stop.sh` and `podman-compose down` — your connections and
+settings are **never** affected by pulling new source code or rebuilding the image.
+
+> **For full upgrade instructions** — including how to share the app with others without
+> requiring a `git clone`, how to back up your data volumes before upgrading, and the
+> pre-built image approach — see **[INSTALL.md](INSTALL.md)**.
+
+**Quick upgrade (safe — does not touch your data):**
+
+```bash
+git pull          # pull latest source
+./stop.sh         # stop the stack (volumes are NOT removed)
+./start.sh        # rebuild image and restart
+```
+
+> **Warning:** Never run `podman-compose down -v` — the `-v` flag removes named volumes
+> and permanently deletes your connections and backup data.
+
+---
+
 ## How It Works
 
 Want to understand what jira_workload does under the hood — how backup jobs flow,

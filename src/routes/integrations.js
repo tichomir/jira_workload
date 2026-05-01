@@ -38,6 +38,33 @@ function daysBetween(date1, date2) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /integrations — list all non-hard-deleted connections
+// ---------------------------------------------------------------------------
+router.get('/', (req, res) => {
+  const { status } = req.query;
+  const connections = [];
+
+  for (const conn of db.connections.values()) {
+    if (conn.status === 'hard_deleted') continue;
+    if (status && status !== 'all' && conn.status !== status) continue;
+
+    connections.push({
+      connectionId: conn.id,
+      siteName: conn.siteName || conn.siteUrl || conn.cloudId,
+      siteUrl: conn.siteUrl,
+      status: conn.status,
+      boardScopeDegraded: conn.boardScopeDegraded || false,
+      connectedAt: conn.connectedAt,
+      lastSyncedAt: conn.lastSyncedAt || null,
+      connectionPath: conn.connectionPath,
+      createdAt: conn.createdAt,
+    });
+  }
+
+  return res.status(200).json({ connections, total: connections.length });
+});
+
+// ---------------------------------------------------------------------------
 // GET /integrations/:id
 // ---------------------------------------------------------------------------
 router.get('/:id', (req, res) => {

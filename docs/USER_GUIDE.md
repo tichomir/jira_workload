@@ -10,14 +10,24 @@ the application at **http://localhost:4000**.
 
 ## Navigation
 
+All pages share a consistent top navigation bar. Start at the home page:
+
+**http://localhost:4000/**
+
 | Page | URL | Description |
 |---|---|---|
-| Connect | `/connect.html` | Set up an Atlassian OAuth connection |
-| Manage | `/manage.html` | Manage existing connections |
-| Browse | `/browse.html` | Browse and search backed-up Jira objects |
-| SDI | `/sdi.html` | Sensitive Data Intelligence scan results |
-| Resilience | `/resilience.html` | Protected Object Inventory |
+| **Home** | `/` or `/index.html` | Central landing page with nav links to all features and a live connection status summary |
+| **Integrations** | `/connections.html` | List all Jira Cloud connections, add new ones, view status, access backups and settings |
+| **Backups** | `/backups.html?connectionId=<id>` | View backup history, trigger a new backup, and restore from any backup point |
+| **Settings** | `/manage.html?connectionId=<id>` | Manage project scope, token health, and lifecycle for a single connection |
+| **Add Integration** | `/integrations/jira/connect` | Set up a new Atlassian OAuth connection (Express or Manual) |
+| **Browse** | `/browse.html` | Browse and search backed-up Jira objects |
+| **SDI** | `/sdi.html` | Sensitive Data Intelligence scan results |
+| **Resilience** | `/resilience.html` | Protected Object Inventory |
 | OAuth Callback | `/callback.html` | Handled automatically during OAuth flow |
+
+> **Tip:** You no longer need to bookmark individual `manage.html` URLs. The Integrations page
+> (`/connections.html`) lists every connection and links directly to its Backups and Settings pages.
 
 ---
 
@@ -60,7 +70,7 @@ For full setup instructions see [OAUTH_SETUP.md](../OAUTH_SETUP.md) and the
 
 ### Connect to Atlassian Walkthrough
 
-1. Open **http://localhost:4000/connect.html**
+1. Open **http://localhost:4000/** and click **Add Integration**, or go directly to **http://localhost:4000/integrations/jira/connect**
 
 ![Connect Page — OAuth wizard](images/connect-page.png)
 
@@ -93,12 +103,19 @@ For full setup instructions see [OAUTH_SETUP.md](../OAUTH_SETUP.md) and the
 
 ### Managing Connections
 
-Open **http://localhost:4000/manage.html** to:
+Open **http://localhost:4000/connections.html** to see all connected integrations in one place.
 
-![Manage integrations page](images/manage-integrations.png)
-- View the status of all connected integrations.
-- Configure project scope (All Projects, or select specific projects).
-- Delete an integration (Soft Delete by default — data retained for 30 days).
+From the Integrations page you can:
+- View the status of all connections (Active, Degraded, Expired, Deleted).
+- Click **Backups** to open the Backup Management page for a connection.
+- Click **Settings** (opens `manage.html`) to configure project scope and lifecycle for a connection.
+- Click **Delete** to soft-delete a connection (data retained for 30 days).
+- Click **+ Add Integration** to connect a new Jira Cloud site.
+
+The **Backup Management** page (`/backups.html?connectionId=<id>`) lets you:
+- View the full backup history with status, timestamps, and object counts.
+- Click **Trigger Backup Now** to run an immediate backup.
+- Click **Restore** on any backup point to initiate a point-in-time restore.
 
 ### Refresh Token Expiry Alerts
 
@@ -112,13 +129,45 @@ Re-authenticate via the Connect page to reset the timer.
 
 ![Backup status on manage page](images/backup-status.png)
 
-Backups run automatically after connecting. The API endpoints:
+Backups run automatically after connecting. Use the **Backups** page
+(`/backups.html?connectionId=<id>`) for the full UI workflow: trigger a backup,
+monitor job progress, view history, and restore from any backup point.
+
+The API endpoints:
 
 | Endpoint | Description |
 |---|---|
-| `POST /api/v1/integrations/:id/backup` | Trigger a manual backup |
-| `GET  /api/v1/integrations/:id/backup-points` | List backup points |
+| `GET  /api/connections` | List all integrations (alias of `GET /api/v1/integrations`) |
+| `GET  /api/connections/:id/backups` | List backup points for an integration (newest first) |
+| `POST /api/connections/:id/backup` | Trigger an immediate backup; returns `{ jobId, status }` |
+| `GET  /api/v1/integrations/:id/backup/:jobId` | Poll backup job status (`running` → `completed`/`failed`) |
+| `POST /api/v1/integrations/:id/restore-backup` | Restore from a backup point; body: `{ backupPointId, conflictMode?, destination? }` |
+| `GET  /api/v1/integrations/:id/backup-points` | List backup points (v1 path) |
 | `GET  /api/v1/backup-points/:bpId` | Get backup point details |
+
+**Example — trigger and poll a backup:**
+
+```bash
+# Trigger
+curl -s -X POST http://localhost:4000/api/connections/<id>/backup
+# → {"jobId":"<uuid>","status":"running","triggeredAt":"..."}
+
+# Poll until completed or failed
+curl -s http://localhost:4000/api/v1/integrations/<id>/backup/<jobId>
+# → {"status":"completed","completedAt":"..."}
+
+# List backup points
+curl -s http://localhost:4000/api/connections/<id>/backups | python3 -m json.tool
+```
+
+**Example — restore from a backup point:**
+
+```bash
+curl -s -X POST http://localhost:4000/api/v1/integrations/<id>/restore-backup \
+  -H "Content-Type: application/json" \
+  -d '{"backupPointId":"<bp-id>","conflictMode":"skip"}'
+# → {"restoreJobId":"...","status":"initiated","currentStage":"workflows_and_fields"}
+```
 
 **First run**: Full JQL enumeration across all selected projects.  
 **Subsequent runs**: Incremental cursor (`updated >= lastBackupTimestamp`).

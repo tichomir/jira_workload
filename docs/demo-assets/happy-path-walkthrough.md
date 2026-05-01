@@ -22,9 +22,9 @@ Record the following flow in a single uninterrupted session. Refer to
 
 | # | Section | What to capture |
 |---|---|---|
-| 1 | Startup | Terminal showing `./start.sh` output and `{"status":"ok"}` health response; browser loading `connect.html` |
-| 2 | OAuth Connect | Full OAuth redirect flow through `auth.atlassian.com` consent screen and callback success page |
-| 3 | Trigger Backup | Clicking "Back Up Now" on `manage.html`, progress indicator, completion with object counts |
+| 1 | Startup | Terminal showing `./start.sh` output and `{"status":"ok"}` health response; browser loading `index.html` (central landing page) |
+| 2 | OAuth Connect | Full OAuth redirect flow through `auth.atlassian.com` consent screen and callback success page; redirect to `connections.html` |
+| 3 | Trigger Backup | Navigating to `connections.html`, clicking **Backups** for a connection, clicking **Trigger Backup Now** on `backups.html`, progress indicator, completion with object counts |
 | 4 | Browse Issues | `browse.html` — keyword search with filters applied, change indicator badges on results, attachment tab |
 | 5 | Restore | Restore wizard on `browse.html` — destination = Alternate, pre-flight checks passing, job completion |
 | 6 | SDI Scan | `sdi.html` — scan triggered, findings table with regulation badges, match counts |

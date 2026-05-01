@@ -57,6 +57,48 @@ app.use('/api/backup-points', backupPointsRouter);
 app.use('/api/preferences', preferencesRouter);
 app.use('/api/sdi', sdiRouter);
 
+// /api/connections aliases (matches acceptance criteria path style)
+// POST /api/connections/:id/restore — backup-point restore (takes priority over soft-delete restore)
+app.post('/api/connections/:id/restore', (req, res, next) => {
+  // If body contains backupPointId, route to backup-point restore; otherwise fall through to connection restore
+  if (req.body && req.body.backupPointId !== undefined) {
+    const { initiateRestore } = require('./services/restoreOrchestrator');
+    const db = require('./db');
+    const integrationId = req.params.id;
+    const connection = db.connections.get(integrationId);
+    if (!connection) {
+      return res.status(404).json({ error: 'CONNECTION_NOT_FOUND', message: 'No connection found with this ID' });
+    }
+    const { backupPointId, conflictMode, destination } = req.body;
+    if (!db.backupPoints.has(backupPointId)) {
+      return res.status(404).json({ error: 'BACKUP_POINT_NOT_FOUND', message: `Backup point ${backupPointId} not found` });
+    }
+    if (conflictMode === 'merge') {
+      return res.status(400).json({ error: 'INVALID_CONFLICT_MODE', message: 'conflictMode "merge" is permanently excluded' });
+    }
+    const dest = destination || { type: 'original' };
+    const result = initiateRestore({
+      backupPointId,
+      sourceSiteId: connection.cloudId,
+      destination: dest,
+      conflictMode: conflictMode || 'skip',
+      objectSelection: { includeAll: true },
+    });
+    if (result.__validationError) {
+      const err = result.blockingError;
+      return res.status(409).json({ error: err.errorCode || 'VALIDATION_FAILED', message: err.detail || 'Pre-execution validation failed' });
+    }
+    if (result.__fieldMappingBlocked) {
+      return res.status(409).json({ error: 'CUSTOM_FIELD_MAPPING_BLOCKED', message: 'Cross-site restore blocked: required custom fields not found' });
+    }
+    return res.status(200).json({ restoreJobId: result.restoreJobId, status: result.status, conflictModeEffective: result.conflictModeEffective, currentStage: result.currentStage });
+  }
+  next();
+});
+app.use('/api/connections', integrationsRouter);
+app.use('/api/connections', backupRouter);
+
+
 // Purge cascade endpoint (platform-layer, not scoped to a single integration)
 app.post('/api/v1/purge/cascade', (req, res) => {
   const { nodeType, targetId } = req.body || {};
@@ -92,7 +134,7 @@ app.get('/integrations/jira/browse', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.redirect('/integrations/jira/connect');
+  res.redirect('/index.html');
 });
 
 // 404 handler

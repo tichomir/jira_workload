@@ -31,6 +31,10 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       PORT:     ${PORT:-4000}
+      # Persistent data directory — db.json (connections, OAuth tokens, backup
+      # metadata) is read/written here.  The named volume db_data is mounted at
+      # /data so upgrades (image pull + restart) never touch stored data.
+      DATA_DIR: /data
       # Force Node.js to flush stdout immediately even when not attached to a TTY.
       # Without this, podman-compose logs -f may show no output after the startup line.
       NODE_OPTIONS: "--no-experimental-fetch"
@@ -38,6 +42,7 @@ services:
     ports:
       - "${PORT:-4000}:${PORT:-4000}"
     volumes:
+      - db_data:/data
       - backup_data:/app/data/backups
       - sdi_tmp:/app/data/sdi-tmp
       - export_data:/app/data/exports
@@ -80,6 +85,8 @@ services:
 
 # ─── Named volumes (persisted across container restarts) ──────────────────────
 volumes:
+  db_data:
+    driver: local
   backup_data:
     driver: local
   sdi_tmp:

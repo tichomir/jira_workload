@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backups — Jira Workload</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="/" class="topnav-brand">Jira Workload</a>
+    <div class="topnav-links">
+      <a href="/index.html" class="topnav-link">Home</a>
+      <a href="/connections.html" class="topnav-link">Integrations</a>
+      <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/browse.html" class="topnav-link">Browse</a>
+      <a href="/resilience.html" class="topnav-link">Resilience</a>
+      <a href="/sdi.html" class="topnav-link">SDI</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <!-- Page header — populated once connection loads -->
+  <div class="page-header" id="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+    <div>
+      <h1 id="page-title">Backups</h1>
+      <p id="page-subtitle" class="text-muted text-sm">Loading connection…</p>
+    </div>
+    <div class="flex gap-8">
+      <a href="/connections.html" class="btn btn-secondary btn-sm">← All Integrations</a>
+      <button id="btn-trigger-backup" class="btn btn-primary" onclick="triggerBackup()" disabled>
+        Trigger Backup Now
+      </button>
+    </div>
+  </div>
+
+  <!-- Error: missing connectionId or connection not found -->
+  <div id="section-load-error" class="card hidden">
+    <div class="banner banner-error" style="margin-bottom:0">
+      <span class="banner-icon">✖</span>
+      <div class="banner-body">
+        <div class="banner-title">Failed to load</div>
+        <div class="banner-msg" id="load-error-msg"></div>
+      </div>
+    </div>
+    <div class="mt-16">
+      <a href="/connections.html" class="btn btn-secondary">← Back to Integrations</a>
+    </div>
+  </div>
+
+  <!-- Backup trigger feedback -->
+  <div id="banner-trigger" class="banner hidden">
+    <span class="banner-icon" id="trigger-icon"></span>
+    <div class="banner-body">
+      <div class="banner-title" id="trigger-title"></div>
+      <div class="banner-msg" id="trigger-msg"></div>
+    </div>
+    <button class="banner-close" onclick="hideTriggerBanner()">×</button>
+  </div>
+
+  <!-- Restore feedback -->
+  <div id="banner-restore" class="banner hidden">
+    <span class="banner-icon" id="restore-icon"></span>
+    <div class="banner-body">
+      <div class="banner-title" id="restore-title"></div>
+      <div class="banner-msg" id="restore-msg"></div>
+    </div>
+    <button class="banner-close" onclick="hideRestoreBanner()">×</button>
+  </div>
+
+  <!-- Active backup job status -->
+  <div id="job-status-card" class="card hidden">
+    <div class="flex items-center gap-8">
+      <div class="spinner"></div>
+      <div>
+        <div style="font-weight:600">Backup in progress</div>
+        <div class="text-muted text-sm" id="job-status-msg">Backup job running…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup history -->
+  <div class="card" id="backups-card">
+    <div class="card-title">Backup History</div>
+    <div class="card-subtitle">All backup points for this integration, newest first.</div>
+    <div id="backups-loading" class="loading">
+      <div class="spinner"></div>
+      <span>Loading backup history…</span>
+    </div>
+    <div id="backups-body" class="hidden"></div>
+  </div>
+</div>
+
+<!-- Restore confirmation modal -->
+<div class="modal-overlay hidden" id="modal-restore">
+  <div class="modal">
+    <div class="modal-title">Restore from Backup?</div>
+    <div class="modal-body">
+      <p>Restore all Jira data from backup point taken at:</p>
+      <p style="margin-top:8px"><strong id="modal-restore-date"></strong></p>
+      <div style="margin-top:16px">
+        <label class="form-label">Conflict Mode</label>
+        <select id="restore-conflict-mode" class="form-select" style="max-width:200px">
+          <option value="skip">Skip (default)</option>
+          <option value="override">Override</option>
+        </select>
+      </div>
+      <div class="modal-warning">⚠ This will initiate a restore pipeline. The operation may take several minutes depending on data size.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeRestoreModal()">Cancel</button>
+      <button class="btn btn-primary" id="btn-confirm-restore" onclick="executeRestore()">Start Restore</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let _connectionId = null;
+let _restoreBackupPointId = null;
+let _pollInterval = null;
+
+function qs(id) { return document.getElementById(id); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = new URLSearchParams(window.location.search);
+  _connectionId = params.get('connectionId');
+
+  if (!_connectionId) {
+    qs('backups-card').classList.add('hidden');
+    qs('load-error-msg').textContent = 'No connectionId in URL. Navigate here from the Integrations page.';
+    qs('section-load-error').classList.remove('hidden');
+    return;
+  }
+
+  await loadConnection();
+  await loadBackups();
+});
+
+async function loadConnection() {
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}`);
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.message || 'Connection not found');
+    }
+    const conn = await res.json();
+    const name = conn.siteName || conn.siteUrl || _connectionId;
+    qs('page-title').textContent = `Backups — ${name}`;
+    qs('page-subtitle').textContent = conn.siteUrl || conn.cloudId || '';
+
+    const isActive = conn.status === 'active' || conn.status === 'degraded';
+    qs('btn-trigger-backup').disabled = !isActive;
+    if (!isActive) {
+      qs('btn-trigger-backup').title = `Cannot trigger backup: integration status is "${conn.status}"`;
+    }
+  } catch (e) {
+    qs('backups-card').classList.add('hidden');
+    qs('load-error-msg').textContent = e.message;
+    qs('section-load-error').classList.remove('hidden');
+  }
+}
+
+async function loadBackups() {
+  qs('backups-loading').classList.remove('hidden');
+  qs('backups-body').classList.add('hidden');
+
+  try {
+    const res = await fetch(`/api/connections/${_connectionId}/backups`);
+    const data = await res.json();
+    const points = data.backupPoints || [];
+
+    qs('backups-loading').classList.add('hidden');
+    renderBackups(points, data.total || 0);
+  } catch (e) {
+    qs('backups-loading').innerHTML =
+      `<span style="color:var(--danger)">Failed to load backup history: ${escHtml(e.message)}</span>`;
+  }
+}
+
+function renderBackups(points, total) {
+  const body = qs('backups-body');
+  body.classList.remove('hidden');
+
+  if (points.length === 0) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">💾</div>
+        <h3>No backups yet</h3>
+        <p>Trigger your first backup to protect your Jira data.</p>
+        <button class="btn btn-primary" onclick="triggerBackup()">Trigger Backup Now</button>
+      </div>`;
+    return;
+  }
+
+  const rows = points.map(bp => {
+    const statusCls = bp.status === 'completed' ? 'badge-active' : bp.status === 'running' ? 'badge-degraded' : 'badge-deleted';
+    const counts = bp.objectCounts || {};
+    const countStr = [
+      counts.issues ? `${counts.issues} issues` : null,
+      counts.workflows ? `${counts.workflows} workflows` : null,
+      counts.customFieldDefinitions ? `${counts.customFieldDefinitions} custom fields` : null,
+      counts.attachments ? `${counts.attachments} attachments` : null,
+    ].filter(Boolean).join(', ') || '—';
+
+    return `<tr>
+      <td class="font-mono text-sm">${fmtDate(bp.createdAt)}</td>
+      <td><span class="badge ${statusCls}">${escHtml(bp.status || 'completed')}</span></td>
+      <td class="text-muted text-sm">${escHtml(countStr)}</td>
+      <td class="actions">
+        <button class="btn btn-sm btn-secondary" onclick="openRestoreModal('${escHtml(bp.id)}', '${escHtml(bp.createdAt)}')">
+          Restore
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="text-muted text-sm mb-8">${total} backup point${total !== 1 ? 's' : ''} total</div>
+    <table class="data-table">
+      <thead><tr>
+        <th>Created</th>
+        <th>Status</th>
+        <th>Contents</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* ── Trigger Backup ── */
+async function triggerBackup() {
+  const btn = qs('btn-trigger-backup');
+  btn.disabled = true;
+  btn.textContent = 'Triggering…';
+  hideTriggerBanner();
+
+  try {
+    const res = await fetch(`/api/connections/${_connectionId}/backup`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Backup trigger failed');
+
+    showTriggerBanner('success', 'Backup triggered', `Job ID: ${data.jobId} — status: ${data.status}`);
+    qs('job-status-card').classList.remove('hidden');
+    qs('job-status-msg').textContent = `Job ${data.jobId} is running…`;
+    pollJob(data.jobId);
+  } catch (e) {
+    showTriggerBanner('error', 'Backup trigger failed', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Trigger Backup Now';
+  }
+}
+
+function pollJob(jobId) {
+  if (_pollInterval) clearInterval(_pollInterval);
+  _pollInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/integrations/${_connectionId}/backup/${jobId}`);
+      const job = await res.json();
+      if (job.status === 'completed' || job.status === 'failed') {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+        qs('job-status-card').classList.add('hidden');
+        if (job.status === 'completed') {
+          showTriggerBanner('success', 'Backup completed', `Job ${jobId} completed at ${fmtDate(job.completedAt)}`);
+        } else {
+          showTriggerBanner('error', 'Backup failed', job.error || 'Unknown error');
+        }
+        await loadBackups();
+      } else {
+        qs('job-status-msg').textContent = `Job ${jobId} running… (started ${fmtDate(job.triggeredAt)})`;
+      }
+    } catch (_) { /* ignore poll errors */ }
+  }, 3000);
+}
+
+function showTriggerBanner(type, title, msg) {
+  const banner = qs('banner-trigger');
+  banner.className = `banner banner-${type === 'success' ? 'success' : 'error'}`;
+  qs('trigger-icon').textContent = type === 'success' ? '✔' : '✖';
+  qs('trigger-title').textContent = title;
+  qs('trigger-msg').textContent = msg;
+  banner.classList.remove('hidden');
+}
+function hideTriggerBanner() { qs('banner-trigger').classList.add('hidden'); }
+
+/* ── Restore ── */
+function openRestoreModal(backupPointId, createdAt) {
+  _restoreBackupPointId = backupPointId;
+  qs('modal-restore-date').textContent = fmtDate(createdAt);
+  qs('modal-restore').classList.remove('hidden');
+}
+function closeRestoreModal() {
+  qs('modal-restore').classList.add('hidden');
+  _restoreBackupPointId = null;
+}
+
+async function executeRestore() {
+  if (!_restoreBackupPointId) return;
+  const btn = qs('btn-confirm-restore');
+  btn.disabled = true;
+  btn.textContent = 'Starting restore…';
+  hideRestoreBanner();
+
+  const conflictMode = qs('restore-conflict-mode').value;
+
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}/restore-backup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backupPointId: _restoreBackupPointId, conflictMode }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Restore failed');
+
+    closeRestoreModal();
+    showRestoreBanner('success', 'Restore initiated',
+      `Restore job ${data.restoreJobId} is ${data.status}. Stage: ${data.currentStage || '—'}`);
+  } catch (e) {
+    closeRestoreModal();
+    showRestoreBanner('error', 'Restore failed', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Start Restore';
+  }
+}
+
+function showRestoreBanner(type, title, msg) {
+  const banner = qs('banner-restore');
+  banner.className = `banner banner-${type === 'success' ? 'success' : 'error'}`;
+  qs('restore-icon').textContent = type === 'success' ? '✔' : '✖';
+  qs('restore-title').textContent = title;
+  qs('restore-msg').textContent = msg;
+  banner.classList.remove('hidden');
+}
+function hideRestoreBanner() { qs('banner-restore').classList.add('hidden'); }
+</script>
+</body>
+</html>

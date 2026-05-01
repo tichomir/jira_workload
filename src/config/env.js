@@ -122,6 +122,11 @@ const WEBHOOK_CALLBACK_URL = get('WEBHOOK_CALLBACK_URL', {
   defaultValue: `${APP_BASE_URL}/webhooks/jira`,
 });
 
+// Persistent data directory — stores db.json (connections, backup metadata, etc.).
+// Defaults to ~/.dcc-jira for local development; set to /data inside containers.
+// See src/db/persist.js for the full resolution order.
+const DATA_DIR = get('DATA_DIR', { defaultValue: '' }); // empty → persist.js uses os.homedir()
+
 // Storage paths — use forward slashes; Node.js path.join normalises on all platforms.
 const BACKUP_STORAGE_PATH = get('BACKUP_STORAGE_PATH', { defaultValue: './data/backups' });
 const SDI_TMP_PATH = get('SDI_TMP_PATH', { defaultValue: './data/sdi-tmp' });
@@ -172,6 +177,9 @@ module.exports = {
 
   // Webhooks
   WEBHOOK_CALLBACK_URL,
+
+  // Persistent data directory
+  DATA_DIR,
 
   // Storage paths
   BACKUP_STORAGE_PATH,

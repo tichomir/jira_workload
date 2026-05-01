@@ -1,10 +1,16 @@
 'use strict';
 
 /**
- * In-memory data store.
- * In production, replace with a real database (PostgreSQL, etc.).
- * All collections are plain Maps keyed by record ID.
+ * In-memory data store with file-based persistence.
+ *
+ * All Maps are loaded from $DATA_DIR/db.json at startup and saved back on
+ * graceful shutdown (SIGTERM/SIGINT) and every AUTO_SAVE_INTERVAL_MS.
+ *
+ * DATA_DIR defaults to ~/.dcc-jira (local) or /data (container, via env).
+ * See src/db/persist.js for the serialisation details.
  */
+
+const { loadDb, saveDb, getDataDir } = require('./persist');
 
 // OAuthConnection records (keyed by id)
 const connections = new Map();
@@ -128,6 +134,10 @@ const sdiScanResults = new Map();
 // Sprint 4 — Restore Engine
 // ---------------------------------------------------------------------------
 
+// BackupJob records (keyed by jobId)
+// Shape: { id, integrationId, status, triggeredAt, completedAt, error, result }
+const backupJobs = new Map();
+
 // RestoreJob records (keyed by restoreJobId)
 // Shape: { restoreJobId, status, conflictModeEffective, conflictModeDowngradeReason,
 //          destination, validationWarnings, stageResults, currentStage,
@@ -154,13 +164,16 @@ function pruneExpiredStates() {
   }
 }
 
-module.exports = {
+// ---------------------------------------------------------------------------
+// Persistence — assemble the export object first, then load from disk.
+// ---------------------------------------------------------------------------
+
+const db = {
   connections,
   pendingStates,
   cloudSites,
   lifecycleEvents,
   scopeValidations,
-  pruneExpiredStates,
   // Sprint 2
   backupRunStates,
   webhookRegistrations,
@@ -190,4 +203,32 @@ module.exports = {
   restoredObjects,
   // Sprint 5
   sdiScanResults,
+  // Sprint 12
+  backupJobs,
+};
+
+// Load persisted state synchronously at module load time so all routes start
+// with the correct data.  DATA_DIR is resolved inside persist.js.
+loadDb(db);
+
+// Auto-save every 30 seconds to capture mutations without requiring every
+// route to call saveDb explicitly.
+const AUTO_SAVE_INTERVAL_MS = 30_000;
+const _autoSaveTimer = setInterval(() => saveDb(db), AUTO_SAVE_INTERVAL_MS);
+if (_autoSaveTimer.unref) _autoSaveTimer.unref(); // don't block process exit
+
+// Graceful-shutdown hooks: save before process terminates.
+function _shutdown(signal) {
+  process.stdout.write(`[db] Received ${signal} — saving db to disk…\n`);
+  saveDb(db);
+  process.exit(0);
+}
+process.once('SIGTERM', () => _shutdown('SIGTERM'));
+process.once('SIGINT',  () => _shutdown('SIGINT'));
+
+module.exports = {
+  ...db,
+  pruneExpiredStates,
+  saveDb: () => saveDb(db),
+  getDataDir,
 };

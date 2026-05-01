@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jira Workload Analytics — Home</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="/" class="topnav-brand">Jira Workload</a>
+    <div class="topnav-links">
+      <a href="/index.html" class="topnav-link active">Home</a>
+      <a href="/connections.html" class="topnav-link">Integrations</a>
+      <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/browse.html" class="topnav-link">Browse</a>
+      <a href="/resilience.html" class="topnav-link">Resilience</a>
+      <a href="/sdi.html" class="topnav-link">SDI</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="hero">
+    <div style="font-size:48px;margin-bottom:16px">🛡️</div>
+    <h1>Jira Workload Analytics</h1>
+    <p>Self-hosted backup, browse, search, and restore for your Jira Cloud data — with Sensitive Data Intelligence and Resilience controls built in.</p>
+  </div>
+
+  <div class="nav-grid">
+    <a href="/connections.html" class="nav-card">
+      <div class="nav-card-icon">🔗</div>
+      <h3>Integrations</h3>
+      <p>View and manage all your Jira Cloud connections. Check status, configure scopes, and trigger syncs.</p>
+    </a>
+
+    <a href="/integrations/jira/connect" class="nav-card">
+      <div class="nav-card-icon">➕</div>
+      <h3>Add Integration</h3>
+      <p>Connect a new Jira Cloud site via Atlassian OAuth 2.0. Express or Manual path available.</p>
+    </a>
+
+    <a href="/connections.html" class="nav-card">
+      <div class="nav-card-icon">💾</div>
+      <h3>Backups</h3>
+      <p>Trigger backups, view backup history, and restore Jira data to any point in time.</p>
+    </a>
+
+    <a href="/browse.html" class="nav-card">
+      <div class="nav-card-icon">🔍</div>
+      <h3>Browse &amp; Search</h3>
+      <p>Search across Projects, Issues, Attachments, and Workflows. Explore change indicators.</p>
+    </a>
+
+    <a href="/resilience.html" class="nav-card">
+      <div class="nav-card-icon">🏛️</div>
+      <h3>Resilience Module</h3>
+      <p>Protected Object Inventory — manage purge cascade boundaries for Workflows and Custom Fields.</p>
+    </a>
+
+    <a href="/sdi.html" class="nav-card">
+      <div class="nav-card-icon">🔐</div>
+      <h3>Sensitive Data Intelligence</h3>
+      <p>Scan backed-up Jira data for Emails, API Keys, Credit Cards, and Phone Numbers.</p>
+    </a>
+  </div>
+
+  <!-- Status summary -->
+  <div class="card mt-24" id="status-card">
+    <div class="card-title">Connection Status</div>
+    <div class="card-subtitle">Summary of all active Jira integrations.</div>
+    <div id="status-loading" class="loading">
+      <div class="spinner"></div>
+      <span>Loading…</span>
+    </div>
+    <div id="status-body" class="hidden"></div>
+  </div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch('/api/connections');
+    const data = await res.json();
+    const connections = data.connections || [];
+
+    document.getElementById('status-loading').classList.add('hidden');
+    const body = document.getElementById('status-body');
+    body.classList.remove('hidden');
+
+    if (connections.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">🔌</div>
+          <h3>No integrations yet</h3>
+          <p>Connect your first Jira Cloud site to get started.</p>
+          <a href="/integrations/jira/connect" class="btn btn-primary">Add Integration</a>
+        </div>`;
+      return;
+    }
+
+    const rows = connections.map(c => {
+      const statusMap = {
+        active:       ['badge-active',   '● Active'],
+        degraded:     ['badge-degraded', '● Degraded'],
+        expired:      ['badge-expired',  '● Expired'],
+        soft_deleted: ['badge-deleted',  '● Deleted'],
+      };
+      const [cls, label] = statusMap[c.status] || ['badge-deleted', c.status];
+      const name = escHtml(c.siteName || c.siteUrl || c.connectionId);
+      return `<tr>
+        <td><strong>${name}</strong></td>
+        <td><span class="badge ${cls}">${label}</span></td>
+        <td class="text-muted text-sm">${fmtDate(c.connectedAt)}</td>
+        <td class="actions">
+          <a href="/backups.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-primary">Backups</a>
+          <a href="/manage.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-secondary">Manage</a>
+        </td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th>Site</th><th>Status</th><th>Connected</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="mt-16">
+        <a href="/connections.html" class="btn btn-secondary btn-sm">View all integrations →</a>
+      </div>`;
+  } catch (e) {
+    document.getElementById('status-loading').innerHTML =
+      `<span style="color:var(--danger)">Failed to load status: ${escHtml(e.message)}</span>`;
+  }
+});
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+</script>
+</body>
+</html>

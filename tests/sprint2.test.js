@@ -1400,12 +1400,8 @@ describe('Integration Smoke Test — full pipeline end-to-end', () => {
       .post(`/api/v1/integrations/${conn.id}/backup`)
       .send();
 
-    expect(res.status).toBe(200);
-    expect(res.body.integrationId).toBe(conn.id);
-    expect(res.body.completedAt).toBeTruthy();
-    expect(res.body.webhookResult.registered).toBe(true);
-    expect(res.body.projectResults).toHaveLength(0);
-    expect(res.body.siteEnumeration.workflowCount).toBe(0);
-    expect(res.body.siteEnumeration.fieldCount).toBe(0);
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBeTruthy();
+    expect(res.body.status).toBe('running');
   });
 });

@@ -12,6 +12,7 @@
  */
 
 const express = require('express');
+const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { runIntegrationBackup } = require('../services/backupEngine');
 const { triggerManualSync, getOrCreateRefreshConfig } = require('../services/dataScopeRefresh');
@@ -25,9 +26,9 @@ function errorResponse(res, status, code, message) {
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/integrations/:id/backup
-// Trigger a backup run for the integration.
+// Trigger an async backup run. Returns 202 immediately with {jobId, status}.
 // ---------------------------------------------------------------------------
-router.post('/:id/backup', async (req, res) => {
+router.post('/:id/backup', (req, res) => {
   const integrationId = req.params.id;
   const connection = db.connections.get(integrationId);
   if (!connection) {
@@ -37,14 +38,114 @@ router.post('/:id/backup', async (req, res) => {
     return errorResponse(res, 409, 'CONNECTION_DELETED', 'Cannot backup a deleted connection');
   }
 
-  try {
-    const result = await runIntegrationBackup(integrationId);
-    return res.status(200).json(result);
-  } catch (err) {
+  const jobId = uuidv4();
+  const now = new Date().toISOString();
+  const job = { id: jobId, integrationId, status: 'running', triggeredAt: now, completedAt: null, error: null };
+  db.backupJobs.set(jobId, job);
+
+  // Fire-and-forget — respond 202 immediately
+  runIntegrationBackup(integrationId).then((result) => {
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.result = result;
+    db.backupJobs.set(jobId, job);
+  }).catch((err) => {
     console.error('Backup run failed:', err);
-    return errorResponse(res, 500, 'BACKUP_FAILED', err.message);
-  }
+    job.status = 'failed';
+    job.completedAt = new Date().toISOString();
+    job.error = err.message;
+    db.backupJobs.set(jobId, job);
+  });
+
+  return res.status(202).json({ jobId, status: 'running', triggeredAt: now });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/integrations/:id/backup/run-states  (declared before /:jobId to take priority)
+// Return backup run states for this integration.
+// ---------------------------------------------------------------------------
+router.get('/:id/backup/run-states', (req, res) => {
+  const integrationId = req.params.id;
+  const connection = db.connections.get(integrationId);
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  const runStates = [];
+  for (const state of db.backupRunStates.values()) {
+    if (state.integrationId === integrationId) {
+      runStates.push({
+        id: state.id,
+        projectKey: state.projectKey,
+        lastBackupTimestamp: state.lastBackupTimestamp,
+        lastRunStatus: state.lastRunStatus,
+        lastRunCompletedAt: state.lastRunCompletedAt,
+      });
+    }
+  }
+
+  return res.status(200).json({ integrationId, runStates });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/integrations/:id/backup/:jobId
+// Poll a specific backup job status.
+// ---------------------------------------------------------------------------
+router.get('/:id/backup/:jobId', (req, res) => {
+  const { id: integrationId, jobId } = req.params;
+  const connection = db.connections.get(integrationId);
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  const job = db.backupJobs.get(jobId);
+  if (!job || job.integrationId !== integrationId) {
+    return errorResponse(res, 404, 'BACKUP_JOB_NOT_FOUND', `Backup job ${jobId} not found`);
+  }
+
+  return res.status(200).json({ jobId: job.id, integrationId: job.integrationId, status: job.status, triggeredAt: job.triggeredAt, completedAt: job.completedAt, error: job.error || null });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/integrations/:id/backup-points  (also aliased as /:id/backups)
+// List backup points for an integration, sorted by createdAt DESC.
+// ---------------------------------------------------------------------------
+function listBackupPoints(req, res) {
+  const integrationId = req.params.id;
+  const connection = db.connections.get(integrationId);
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  const points = [];
+  for (const bp of db.backupPoints.values()) {
+    if (bp.integrationId !== integrationId) continue;
+    points.push({
+      id: bp.id,
+      createdAt: bp.createdAt,
+      priorBackupPointId: bp.priorBackupPointId || null,
+      status: bp.status || 'completed',
+      objectCounts: bp.objectCounts || { issues: 0, workflows: 0, customFieldDefinitions: 0, attachments: 0 },
+    });
+  }
+
+  points.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+  const cursor = req.query.cursor || null;
+  let startIdx = 0;
+  if (cursor) {
+    const idx = points.findIndex(p => p.id === cursor);
+    if (idx !== -1) startIdx = idx + 1;
+  }
+  const page = points.slice(startIdx, startIdx + limit);
+  const nextCursor = startIdx + limit < points.length ? page[page.length - 1].id : null;
+
+  return res.status(200).json({ integrationId, backupPoints: page, total: points.length, nextCursor });
+}
+
+router.get('/:id/backup-points', listBackupPoints);
+router.get('/:id/backups', listBackupPoints);
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/integrations/:id/sync
@@ -215,6 +316,60 @@ router.get('/:id/attachments', (req, res) => {
   }
 
   return res.status(200).json({ integrationId, entries });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/integrations/:id/restore-backup
+// Convenience endpoint: initiate a data restore from a backup point.
+// Body: { backupPointId, conflictMode?, destination? }
+// Returns restore job status.
+// ---------------------------------------------------------------------------
+router.post('/:id/restore-backup', (req, res) => {
+  const integrationId = req.params.id;
+  const connection = db.connections.get(integrationId);
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  const { backupPointId, conflictMode, destination } = req.body || {};
+  if (!backupPointId) {
+    return errorResponse(res, 400, 'MISSING_BACKUP_POINT', 'backupPointId is required');
+  }
+  if (!db.backupPoints.has(backupPointId)) {
+    return errorResponse(res, 404, 'BACKUP_POINT_NOT_FOUND', `Backup point ${backupPointId} not found`);
+  }
+  if (conflictMode === 'merge') {
+    return errorResponse(res, 400, 'INVALID_CONFLICT_MODE', 'conflictMode "merge" is permanently excluded');
+  }
+
+  // Delegate to the restore engine
+  const { initiateRestore } = require('../services/restoreOrchestrator');
+  const dest = destination || { type: 'original' };
+  const restoreRequest = {
+    backupPointId,
+    sourceSiteId: connection.cloudId,
+    destination: dest,
+    conflictMode: conflictMode || 'skip',
+    objectSelection: { includeAll: true },
+  };
+
+  const result = initiateRestore(restoreRequest);
+
+  if (result.__validationError) {
+    const err = result.blockingError;
+    return errorResponse(res, 409, err.errorCode || 'VALIDATION_FAILED', err.detail || 'Pre-execution validation failed');
+  }
+  if (result.__fieldMappingBlocked) {
+    return errorResponse(res, 409, 'CUSTOM_FIELD_MAPPING_BLOCKED',
+      `Cross-site restore blocked: required custom fields not found on target site`);
+  }
+
+  return res.status(200).json({
+    restoreJobId: result.restoreJobId,
+    status: result.status,
+    conflictModeEffective: result.conflictModeEffective,
+    currentStage: result.currentStage,
+  });
 });
 
 module.exports = router;

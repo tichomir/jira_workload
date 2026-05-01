@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Integrations — Jira Workload</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a href="/" class="topnav-brand">Jira Workload</a>
+    <div class="topnav-links">
+      <a href="/index.html" class="topnav-link">Home</a>
+      <a href="/connections.html" class="topnav-link active">Integrations</a>
+      <a href="/integrations/jira/connect" class="topnav-link">Add Integration</a>
+      <a href="/browse.html" class="topnav-link">Browse</a>
+      <a href="/resilience.html" class="topnav-link">Resilience</a>
+      <a href="/sdi.html" class="topnav-link">SDI</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+    <div>
+      <h1>Integrations</h1>
+      <p>All connected Jira Cloud sites. Select a connection to manage backups or settings.</p>
+    </div>
+    <a href="/integrations/jira/connect" class="btn btn-primary">+ Add Integration</a>
+  </div>
+
+  <!-- Global feedback banners -->
+  <div id="banner-success" class="banner banner-success hidden">
+    <span class="banner-icon">✔</span>
+    <div class="banner-body"><div class="banner-msg" id="banner-success-msg"></div></div>
+    <button class="banner-close" onclick="hideBanner('banner-success')">×</button>
+  </div>
+  <div id="banner-error" class="banner banner-error hidden">
+    <span class="banner-icon">✖</span>
+    <div class="banner-body"><div class="banner-msg" id="banner-error-msg"></div></div>
+    <button class="banner-close" onclick="hideBanner('banner-error')">×</button>
+  </div>
+
+  <div class="card">
+    <div id="connections-loading" class="loading">
+      <div class="spinner"></div>
+      <span>Loading integrations…</span>
+    </div>
+    <div id="connections-body" class="hidden"></div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal-overlay hidden" id="modal-delete">
+  <div class="modal">
+    <div class="modal-title">Delete Integration?</div>
+    <div class="modal-body">
+      <p>This will <strong>soft delete</strong> the integration <strong id="modal-delete-name"></strong>.</p>
+      <ul style="margin:10px 0 0 18px;font-size:14px;color:var(--text)">
+        <li>All sync jobs will be paused immediately.</li>
+        <li>Data will be retained for <strong>30 days</strong> before permanent deletion.</li>
+        <li>You can restore within the retention window.</li>
+      </ul>
+      <div class="modal-warning">⚠ After 30 days all tokens, credentials, and sync data will be permanently purged.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-warning" id="btn-confirm-delete" onclick="executeDelete()">Delete with 30-day retention</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let _deleteId = null;
+let _connections = [];
+
+function qs(id) { return document.getElementById(id); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+function showBanner(id, msg) {
+  qs(id + '-msg').textContent = msg;
+  qs(id).classList.remove('hidden');
+}
+function hideBanner(id) { qs(id).classList.add('hidden'); }
+
+window.addEventListener('DOMContentLoaded', loadConnections);
+
+async function loadConnections() {
+  qs('connections-loading').classList.remove('hidden');
+  qs('connections-body').classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/connections');
+    const data = await res.json();
+    _connections = data.connections || [];
+    renderConnections();
+  } catch (e) {
+    qs('connections-loading').innerHTML =
+      `<span style="color:var(--danger)">Failed to load: ${escHtml(e.message)}</span>`;
+  }
+}
+
+function renderConnections() {
+  qs('connections-loading').classList.add('hidden');
+  const body = qs('connections-body');
+  body.classList.remove('hidden');
+
+  if (_connections.length === 0) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🔌</div>
+        <h3>No integrations yet</h3>
+        <p>Connect your first Jira Cloud site to get started with backup and analytics.</p>
+        <a href="/integrations/jira/connect" class="btn btn-primary">+ Add Integration</a>
+      </div>`;
+    return;
+  }
+
+  const rows = _connections.map(c => {
+    const statusMap = {
+      active:       ['badge-active',   '● Active'],
+      degraded:     ['badge-degraded', '● Degraded'],
+      expired:      ['badge-expired',  '● Expired'],
+      soft_deleted: ['badge-deleted',  '● Deleted'],
+    };
+    const [cls, label] = statusMap[c.status] || ['badge-deleted', c.status];
+    const name = escHtml(c.siteName || c.siteUrl || c.connectionId);
+    const url  = escHtml(c.siteUrl || '');
+    const isDeleted = c.status === 'soft_deleted' || c.status === 'hard_deleted';
+    const deleteBtn = isDeleted
+      ? `<button class="btn btn-sm btn-secondary" disabled>Deleted</button>`
+      : `<button class="btn btn-sm btn-warning" onclick="confirmDelete('${escHtml(c.connectionId)}', '${name}')">Delete</button>`;
+
+    return `<tr>
+      <td>
+        <strong>${name}</strong>
+        ${url ? `<div class="text-muted text-sm">${url}</div>` : ''}
+      </td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td class="text-muted text-sm">${fmtDate(c.connectedAt)}</td>
+      <td class="text-muted text-sm">${c.lastSyncedAt ? fmtDate(c.lastSyncedAt) : 'Never'}</td>
+      <td class="actions">
+        <a href="/backups.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-primary">Backups</a>
+        <a href="/manage.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-secondary">Settings</a>
+        ${deleteBtn}
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>Site</th>
+        <th>Status</th>
+        <th>Connected</th>
+        <th>Last Sync</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function confirmDelete(id, name) {
+  _deleteId = id;
+  qs('modal-delete-name').textContent = name;
+  qs('modal-delete').classList.remove('hidden');
+}
+
+function closeModal() {
+  qs('modal-delete').classList.add('hidden');
+  _deleteId = null;
+}
+
+async function executeDelete() {
+  if (!_deleteId) return;
+  const btn = qs('btn-confirm-delete');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  hideBanner('banner-error');
+
+  try {
+    const res = await fetch(`${API}/integrations/${_deleteId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteMode: 'soft', retentionDays: 30 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Delete failed');
+
+    closeModal();
+    showBanner('banner-success', 'Integration scheduled for deletion. Data retained for 30 days.');
+    await loadConnections();
+  } catch (e) {
+    closeModal();
+    showBanner('banner-error', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Delete with 30-day retention';
+  }
+}
+</script>
+</body>
+</html>

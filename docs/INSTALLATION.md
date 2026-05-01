@@ -344,6 +344,10 @@ podman-compose -f podman-compose.yml logs -f
 
 ## Upgrading
 
+> **Your connections and settings are preserved** — all user-generated state
+> (OAuth connections, backup metadata) is stored in the `db_data` named volume at
+> `/data` inside the container.  A `git pull` + rebuild **never touches** that volume.
+
 ```bash
 git pull
 ./stop.sh        # or .\stop.ps1
@@ -351,7 +355,12 @@ git pull
 ```
 
 The `--build` flag in `start.sh` ensures the container image is rebuilt with the
-latest source.
+latest source.  Named volumes (`db_data`, `backup_data`, `sdi_tmp`, `export_data`)
+are **not** removed by `./stop.sh` or `podman-compose down` — only
+`podman-compose down -v` removes them (permanent data loss).
+
+See **INSTALL.md** in the project root for the full upgrade guide, data backup
+instructions, and how to use a pre-built image without cloning the source.
 
 ---
 

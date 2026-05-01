@@ -305,3 +305,20 @@ OAUTH_TOKEN_ENCRYPTION_KEY=0ae79904e41359173d04fe7a63a93c289db8b411b9467cbc87e4d
 - ✅ Add integration tests for OAuth callback and manage API using real env credentials — Qa Engineer (◉ Deep, 5 SP)
 
 ---
+### Sprint 12 — MVP UX & Ops Hardening | 2026-05-01 | ✅ done | 26 SP
+**Goal:** Next fixes. 
+1. The demo says in section 3 that I can trigger a backup on created integration, but I cannot. I cannot do it as it is described. 
+2. We need a central page where we can go to manage integration, manage backups - trigger then, view the backups and be able to restore. 
+3. Right now it is all scattered around and there is missing a good landing page. I need a central navigation point that I can go to all pages. 
+4. I need support of a normal instalation mechanism so that I can share the app with someone that they can use it. Right now with the suggested git pull upgrade method, all my current settings are gone. 
+5. We also need a page to be able to manage multiple connections; it looks like right now only 1 connection can be managed. 
+6. Update all relevant documentation  and manuals !
+
+**Delivered:**
+- ✅ Design central navigation and integration management architecture — Software Architect (◈ Standard, 3 SP)
+- ✅ Implement missing backend APIs: list connections, trigger backup, list/restore backups — Backend Developer (◉ Deep, 8 SP)
+- ✅ Build central dashboard, multi-connection manager, and backup management UI pages — Frontend Developer (◉ Deep, 8 SP)
+- ✅ Add installation package support: versioned release with persistent config — Devops Engineer (◉ Deep, 5 SP)
+- ✅ Update DEMO.md and all user-facing documentation to reflect new UI and install flow — Qa Engineer (⚡ Quick, 2 SP)
+
+---

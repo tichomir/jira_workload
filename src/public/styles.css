@@ -416,6 +416,121 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .dot-fail   { background: var(--danger); }
 .dot-warn   { background: var(--amber); }
 
+/* ── Top Navigation Bar ── */
+.topnav {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(9,30,66,.1);
+}
+.topnav-inner {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 48px;
+}
+.topnav-brand {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--primary);
+  text-decoration: none;
+  margin-right: 24px;
+  white-space: nowrap;
+}
+.topnav-brand:hover { color: var(--primary-dark); }
+.topnav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+}
+.topnav-link {
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.topnav-link:hover { background: var(--bg); color: var(--text); }
+.topnav-link.active { background: var(--primary-light); color: var(--primary); }
+
+/* ── Data table ── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.data-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--bg); }
+.data-table .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+.empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.empty-state p  { font-size: 13px; margin-bottom: 20px; }
+
+/* ── Hero / Index page ── */
+.hero {
+  text-align: center;
+  padding: 48px 24px 32px;
+}
+.hero h1 { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
+.hero p  { font-size: 15px; color: var(--text-muted); max-width: 540px; margin: 0 auto; }
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.nav-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  text-decoration: none;
+  color: var(--text);
+  box-shadow: var(--shadow);
+  transition: box-shadow .15s, border-color .15s, transform .1s;
+  display: block;
+}
+.nav-card:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+.nav-card-icon { font-size: 32px; margin-bottom: 10px; }
+.nav-card h3   { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.nav-card p    { font-size: 13px; color: var(--text-muted); }
+
 /* ── Utilities ── */
 .hidden        { display: none !important; }
 .flex          { display: flex; }
