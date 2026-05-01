@@ -35,6 +35,13 @@ beforeAll(() => {
   db  = require('../src/db');
 });
 
+beforeEach(() => {
+  // Ensure clean state before each test (guards against cross-suite db pollution)
+  db.connections.clear();
+  db.backupPoints.clear();
+  db.backupJobs.clear();
+});
+
 afterEach(() => {
   // Clean up test data after each test
   db.connections.clear();

@@ -310,9 +310,10 @@ function showJobSummaryCard(job, progress, isRestore) {
   qs('job-progress-panel').classList.add('hidden');
   const card = qs('job-summary-card');
   const succeeded = job.status === 'completed' || job.status === 'complete';
-  const icon = succeeded ? '✔' : '✖';
-  const color = succeeded ? 'var(--success)' : 'var(--danger)';
-  const bg = succeeded ? 'var(--success-bg)' : 'var(--danger-bg)';
+  const partial = job.status === 'complete_with_errors';
+  const icon = succeeded ? '✔' : partial ? '⚠' : '✖';
+  const color = succeeded ? 'var(--success)' : partial ? 'var(--amber)' : 'var(--danger)';
+  const bg = succeeded ? 'var(--success-bg)' : partial ? 'var(--amber-bg)' : 'var(--danger-bg)';
   const typeLabel = isRestore ? 'Restore' : 'Backup';
 
   let detailHtml = '';
@@ -323,12 +324,13 @@ function showJobSummaryCard(job, progress, isRestore) {
         `<span style="font-size:12px;color:var(--text-muted)">${escHtml(k)}: <strong>${v}</strong></span>`
       ).join('') + '</div>';
   }
-  if (succeeded && isRestore && job.result) {
-    const r = job.result;
+  if ((succeeded || partial) && isRestore && (job.result || job.restoredCount !== undefined)) {
+    const r = job.result || job;
+    const failColor = (r.failedCount || 0) > 0 ? 'color:var(--amber)' : 'color:var(--text-muted)';
     detailHtml = `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px">
       <span style="font-size:12px;color:var(--text-muted)">Restored: <strong>${r.restoredCount || 0}</strong></span>
       <span style="font-size:12px;color:var(--text-muted)">Skipped: <strong>${r.skippedCount || 0}</strong></span>
-      <span style="font-size:12px;color:var(--text-muted)">Failed: <strong>${r.failedCount || 0}</strong></span>
+      <span style="font-size:12px;${failColor}">Failed: <strong>${r.failedCount || 0}</strong></span>
     </div>`;
   }
   if (progress) {
@@ -348,14 +350,14 @@ function showJobSummaryCard(job, progress, isRestore) {
       </div>`
     : '';
 
-  const failuresHtml = (!succeeded && isRestore && job.validationFailures && job.validationFailures.length)
+  const failuresHtml = (!succeeded && !partial && isRestore && job.validationFailures && job.validationFailures.length)
     ? renderValidationFailures(job.validationFailures)
     : '';
 
   card.innerHTML = `<div style="display:flex;align-items:flex-start;gap:12px;padding:4px 0">
     <span style="font-size:24px;color:${color};background:${bg};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon}</span>
     <div style="flex:1">
-      <div style="font-weight:700;font-size:15px;color:${color}">${typeLabel} ${succeeded ? 'completed' : 'failed'}</div>
+      <div style="font-weight:700;font-size:15px;color:${color}">${typeLabel} ${succeeded ? 'completed' : partial ? 'completed with errors' : 'failed'}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Job ${escHtml(job.jobId || job.id || '')} · ${fmtDate(job.completedAt)}</div>
       ${job.error && !succeeded ? `<div style="margin-top:6px;font-size:13px;color:var(--danger)">${escHtml(job.error)}</div>` : ''}
       ${failuresHtml}
@@ -647,14 +649,23 @@ function pollRestoreJob(jobId) {
       const progress = progressRes && progressRes.ok ? await progressRes.json() : null;
       if (progress) { _lastRestoreProgress = progress; updateProgressPanel(progress); }
 
-      const isDone = job.status === 'complete' || job.status === 'failed' ||
-        (job.status === 'running' && job.completedAt);
+      const isDone = job.status === 'complete' || job.status === 'complete_with_errors' ||
+        job.status === 'failed' || (job.status === 'running' && job.completedAt);
       if (isDone) {
         clearInterval(_restorePollInterval);
         _restorePollInterval = null;
         showJobSummaryCard(job, _lastRestoreProgress, true);
         _lastRestoreProgress = null;
-        if (job.status !== 'complete') {
+        if (job.status === 'complete_with_errors') {
+          const fc = job.failedCount || 0;
+          const msg = `Restore completed with ${fc} failure${fc !== 1 ? 's' : ''} — ${job.restoredCount || 0} restored, ${job.skippedCount || 0} skipped`;
+          const mappedErrors = (job.errors || []).map(e => ({
+            checkName: `${e.objectType || 'object'} ${e.id || ''}`,
+            errorCode: e.errorCode,
+            detail: null,
+          }));
+          showRestoreBanner('amber', 'Restore completed with errors', msg, mappedErrors);
+        } else if (job.status !== 'complete') {
           showRestoreBanner('error', 'Restore failed', job.error || `Job ended with status: ${job.status}`, job.validationFailures);
         }
       }
@@ -664,9 +675,9 @@ function pollRestoreJob(jobId) {
 
 function showRestoreBanner(type, title, msg, failures) {
   const banner = qs('banner-restore');
-  const cls = type === 'success' ? 'success' : type === 'info' ? 'info' : 'error';
+  const cls = type === 'success' ? 'success' : type === 'amber' ? 'amber' : type === 'info' ? 'info' : 'error';
   banner.className = `banner banner-${cls}`;
-  qs('restore-icon').textContent = type === 'success' ? '✔' : type === 'info' ? '…' : '✖';
+  qs('restore-icon').textContent = type === 'success' ? '✔' : type === 'amber' ? '⚠' : type === 'info' ? '…' : '✖';
   qs('restore-title').textContent = title;
   qs('restore-msg').textContent = msg;
   const failuresEl = qs('restore-failures');

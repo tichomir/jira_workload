@@ -3010,3 +3010,47 @@ Fix it !
 - ✅ Fix: early-return logic for falsy targetProjectKey bypasses legitimate validation cases — Software Architect (◈ Standard, 3 SP)
 
 ---
+### Sprint 10 — Restore: Fix Workflow, Custom Field, and Project Write Failures | 2026-05-01 | ✅ done | 22 SP
+**Goal:** Restore is stil lnot working. GUI says it is OK, but logs are representing this: 
+
+2026-05-01T22:00:40.114Z POST /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup
+[restore] pre-validation: backupPointId=612a9f7a-b5b4-4f10-a9b2-8a9b4be27270 targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 effectiveCloudId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) basketSize=63
+[validation] starting: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) restoreMode=original basketSize=63
+[validation] check=OAUTH_TOKEN_VALIDITY passed=true targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_EXISTENCE passed=true targetProjectKey=(none) targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_ARCHIVE_STATUS passed=true targetProjectKey=(none)
+[validation] check=WORKFLOW_STATUS_NAMES passed=true warnings=false
+[validation] check=CUSTOM_FIELD_PRESENCE_REQUIRED passed=true
+[validation] check=ATTACHMENT_SIZE passed=true
+[validation] all checks passed: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 warnings=0
+[restore] post-validation: passed=true warnings=0
+[restore] Failed to write workflow id=[object Object]: WORKFLOW_DEFINITION_MISSING — Cannot restore workflow: missing definition
+[restore] Failed to write customFieldDefinition id=customfield_10033: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10034: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10035: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10028: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10020: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10016: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10017: ERR_BAD_REQUEST — Request failed with status code 400
+2026-05-01T22:00:43.139Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/9b6e54f2-bb98-4a0c-aaa6-4d3b2b937797
+2026-05-01T22:00:43.147Z GET /api/v1/jobs/9b6e54f2-bb98-4a0c-aaa6-4d3b2b937797/progress
+[restore] Failed to write customFieldDefinition id=customfield_10000: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write customFieldDefinition id=customfield_10001: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write project id=TS: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write project id=PROJECT_X: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Failed to write issue id=10037: MISSING_PROJECT_KEY — Cannot restore issue: no target project key available
+[restore] Failed to write issue id=10035: MISSING_PROJECT_KEY — Cannot restore issue: no target project key available
+[restore] Failed to write issue id=10040: MISSING_PROJECT_KEY — Cannot restore issue: no target project key available
+[restore] Failed to write issue id=10000: MISSING_PROJECT_KEY — Cannot restore issue: no target project key available
+[restore] Restore job done: jobId=9b6e54f2-bb98-4a0c-aaa6-4d3b2b937797 status=complete restored=3 skipped=44 failed=16
+
+**Delivered:**
+- ✅ Diagnose and design fixes for workflow, custom field, and project restore failures — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix workflow ID serialisation and workflow restore write path — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix customFieldDefinition and project restore write bodies — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix GUI restore status: surface partial failures and failed item count — Frontend Developer (◈ Standard, 3 SP)
+- ✅ QA: end-to-end restore correctness — workflows, custom fields, projects, issues — Qa Engineer (⚡ Quick, 2 SP)
+- ✅ Fix: incomplete writeObjectToJira project fix description in sprint output — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: pre-existing failing test (sprint18) should be investigated and resolved — Backend Developer (◈ Standard, 3 SP)
+
+---

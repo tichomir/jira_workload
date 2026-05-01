@@ -37,8 +37,9 @@ const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 // system fields cannot be created via the Jira API) but should not count toward
 // failedCount or block subsequent pipeline stages.
 const SKIP_ONLY_CODES = new Set([
-  'SYSTEM_FIELD_SKIP',  // System fields (status, summary, etc.) cannot be created
-  'UNSUPPORTED_TYPE',   // Object type has no write path in this pipeline version
+  'SYSTEM_FIELD_SKIP',             // System fields (status, summary, etc.) cannot be created
+  'UNSUPPORTED_TYPE',              // Object type has no write path in this pipeline version
+  'WORKFLOW_DEFINITION_MISSING',   // Backup only has summary; full statuses/transitions unavailable
 ]);
 
 // ── Stage type classification ─────────────────────────────────────────────────
@@ -164,9 +165,12 @@ function detectConflict(item, destination, targetProjectKey) {
 
   if (objectType === 'customFieldDefinition') {
     const name = fields.name || '';
+    const fieldId = fields.id || '';
     for (const [key, cf] of db.customFieldDefinitions.entries()) {
       const siteMatch = !destination.targetSiteId || key.startsWith(`${destination.targetSiteId}:`);
-      if (siteMatch && cf.name === name) return true;
+      if (siteMatch && (cf.name === name || (fieldId && (cf.fieldId === fieldId || key.endsWith(`:${fieldId}`))))) {
+        return true;
+      }
     }
     return false;
   }
@@ -195,10 +199,21 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
 
   switch (item.objectType) {
     case 'issue': {
-      // Determine target project key
+      // Determine target project key — fallback to issueKey prefix as last resort (e.g. "TS-2" → "TS")
+      const issueKeyStr = item.issueKey || item.id;
+      const projectKeyFromIssueKey = (typeof issueKeyStr === 'string' && issueKeyStr.includes('-'))
+        ? issueKeyStr.split('-').slice(0, -1).join('-')
+        : null;
+      // Look up the resolved project key from the sourceToTargetIssueKey map (populated when
+      // project items are written or skipped earlier in the pipeline). Try all known references.
+      const fieldProjectKey = fields.project && fields.project.key;
+      const resolvedFromMap = (fieldProjectKey && sourceToTargetIssueKey[`project:${fieldProjectKey}`])
+        || (projectKeyFromIssueKey && sourceToTargetIssueKey[`project:${projectKeyFromIssueKey}`]);
       const projKey = targetProjectKey
-        || (fields.project && fields.project.key)
-        || (fields.project && fields.project.id);
+        || resolvedFromMap
+        || fieldProjectKey
+        || (fields.project && fields.project.id)
+        || projectKeyFromIssueKey;
 
       if (!projKey) {
         throw Object.assign(new Error('Cannot restore issue: no target project key available'), { code: 'MISSING_PROJECT_KEY' });
@@ -313,23 +328,34 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
     }
 
     case 'customFieldDefinition': {
-      // Only custom fields (not system fields) can be created
+      // Only custom fields (not system fields) can be created via the API
       if (!(fields.id && fields.id.startsWith('customfield_'))) {
         throw Object.assign(new Error('Skipping system field restore'), { code: 'SYSTEM_FIELD_SKIP' });
       }
+      // Do not include `type` on existing fields — it is immutable after creation.
+      // The POST body is only used for net-new fields; existing ones return 400.
       const fieldPayload = {
         name: fields.name || 'Restored Field',
         type: (fields.schema && fields.schema.custom) || 'com.atlassian.jira.plugin.system.customfieldtypes:textfield',
       };
-      if (!jiraAxios) return { targetId: uuidv4(), payload: fieldPayload };
-      const resp = await jiraAxios.post(`${base}/rest/api/3/field`, fieldPayload);
-      return { targetId: resp.data.id };
+      if (!jiraAxios) return { targetId: fields.id || uuidv4(), payload: fieldPayload };
+      try {
+        const resp = await jiraAxios.post(`${base}/rest/api/3/field`, fieldPayload);
+        return { targetId: resp.data.id };
+      } catch (err) {
+        if (err.isAxiosError && err.response && err.response.status === 400) {
+          // Field already exists on target site — reuse the source field ID
+          return { targetId: fields.id, alreadyExists: true };
+        }
+        throw err;
+      }
     }
 
     case 'project': {
+      const projKey = (fields.key || 'REST').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'REST';
       const projPayload = {
-        key: (fields.key || 'REST').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'REST',
-        name: (fields.name || 'Restored Project') + ' (restored)',
+        key: projKey,
+        name: fields.name || 'Restored Project',
         projectTypeKey: fields.projectTypeKey || 'software',
         projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-scrum-template',
         description: fields.description || 'Restored from backup',
@@ -337,9 +363,17 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
       if (fields.lead && fields.lead.accountId) {
         projPayload.leadAccountId = fields.lead.accountId;
       }
-      if (!jiraAxios) return { targetId: uuidv4(), payload: projPayload };
-      const resp = await jiraAxios.post(`${base}/rest/api/3/project`, projPayload);
-      return { targetId: String(resp.data.id) };
+      if (!jiraAxios) return { targetId: uuidv4(), targetKey: projKey, payload: projPayload };
+      try {
+        const resp = await jiraAxios.post(`${base}/rest/api/3/project`, projPayload);
+        return { targetId: String(resp.data.id), targetKey: resp.data.key || projKey };
+      } catch (err) {
+        if (err.isAxiosError && err.response && err.response.status === 400) {
+          // Project already exists on target site — return its key so issues can still be restored
+          return { targetId: `existing:${projKey}`, targetKey: projKey, alreadyExists: true };
+        }
+        throw err;
+      }
     }
 
     case 'board': {
@@ -397,7 +431,16 @@ async function applyObjectToDestination(restoreJobId, item, destination, fieldMa
     }
     if (item.objectType === 'workflow') {
       try { payload = buildWorkflowRestorePayload(item.fields); }
-      catch (err) { return { error: err.code || 'WORKFLOW_DEFINITION_MISSING', targetId: null }; }
+      catch (err) {
+        const errorCode = err.code || 'WORKFLOW_DEFINITION_MISSING';
+        return { error: errorCode, skip: SKIP_ONLY_CODES.has(errorCode), targetId: null };
+      }
+    }
+    if (item.objectType === 'customFieldDefinition') {
+      const fields = item.fields || {};
+      if (!(fields.id && fields.id.startsWith('customfield_'))) {
+        return { error: 'SYSTEM_FIELD_SKIP', skip: true, targetId: null };
+      }
     }
 
     const storeKey = `${restoreJobId}:${item.objectType}:${item.id}`;
@@ -452,6 +495,11 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
 
     if (hasConflict) {
       if (conflictModeEffective === 'skip') {
+        // For projects: register the existing key so dependent issues can still resolve their project
+        if (item.objectType === 'project') {
+          const projKey = (item.fields && item.fields.key) || (typeof item.id === 'string' ? item.id : null);
+          if (projKey) sourceToTargetIssueKey[`project:${projKey}`] = projKey;
+        }
         itemResults.push({
           id: item.id,
           objectType: item.objectType,
@@ -470,6 +518,7 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
         } else {
           if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }
           if (item.objectType === 'issue' && targetKey) sourceToTargetIssueKey[item.id] = targetKey;
+          if (item.objectType === 'project' && targetKey) sourceToTargetIssueKey[`project:${targetKey}`] = targetKey;
           itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey });
           if (destination.type === 'export' && exportEntries) exportEntries.push({ id: item.id, objectType: item.objectType, targetId });
         }
@@ -493,6 +542,7 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
     } else {
       if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }
       if (item.objectType === 'issue' && targetKey) sourceToTargetIssueKey[item.id] = targetKey;
+      if (item.objectType === 'project' && targetKey) sourceToTargetIssueKey[`project:${targetKey}`] = targetKey;
       itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey });
       if (exportEntry && exportEntries) exportEntries.push(exportEntry);
     }
@@ -688,18 +738,12 @@ async function initiateRestore(restoreRequest) {
     }
   }
 
-  // Finalize job status
-  if (job.pendingConflicts.length > 0) {
-    job.status = 'running';
-  } else {
-    job.status = 'complete';
-  }
-
   // Compute aggregate counts
   let restoredCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
   const byType = {};
+  const failureMessages = [];
 
   for (const stage of job.stageResults) {
     restoredCount += stage.succeeded;
@@ -709,14 +753,32 @@ async function initiateRestore(restoreRequest) {
       if (!byType[item.objectType]) byType[item.objectType] = { restored: 0, skipped: 0, failed: 0 };
       if (item.status === 'success') byType[item.objectType].restored += 1;
       else if (item.status === 'skipped') byType[item.objectType].skipped += 1;
-      else if (item.status === 'failed') byType[item.objectType].failed += 1;
+      else if (item.status === 'failed') {
+        byType[item.objectType].failed += 1;
+        if (failureMessages.length < 5 && item.errorCode) {
+          const itemId = (item.id && typeof item.id === 'object')
+            ? (item.id.entityId || item.id.name || String(item.id))
+            : String(item.id);
+          failureMessages.push({ objectType: item.objectType, id: itemId, errorCode: item.errorCode });
+        }
+      }
     }
+  }
+
+  // Finalize job status based on counts
+  if (job.pendingConflicts.length > 0) {
+    job.status = 'running';
+  } else if (failedCount > 0) {
+    job.status = 'complete_with_errors';
+  } else {
+    job.status = 'complete';
   }
 
   job.restoredCount = restoredCount;
   job.skippedCount = skippedCount;
   job.failedCount = failedCount;
   job.byType = byType;
+  job.failureMessages = failureMessages;
 
   // Build export archive if destination is export
   if (destination.type === 'export') {
@@ -786,7 +848,7 @@ async function submitConflictDecision(restoreJobId, itemId, decision) {
 
   if (job.pendingConflicts.length === 0) {
     const anyFailed = job.stageResults.some(s => s.failed > 0);
-    job.status = anyFailed ? 'failed' : 'complete';
+    job.status = anyFailed ? 'complete_with_errors' : 'complete';
   }
 
   // Recompute counts
@@ -825,6 +887,9 @@ function buildRestoreResponse(job) {
   }
   if (job.exportDownloadUrl) {
     response.exportDownloadUrl = job.exportDownloadUrl;
+  }
+  if (job.failedCount > 0 && job.failureMessages && job.failureMessages.length > 0) {
+    response.errors = job.failureMessages;
   }
   return response;
 }
