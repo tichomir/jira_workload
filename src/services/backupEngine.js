@@ -3,6 +3,8 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { getValidAccessToken, createJiraAxiosInstance } = require('./tokenService');
+
+const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const { runJqlEnumeration } = require('./jqlEnumeration');
 const { ensureWebhookRegistered, buildWebhookJqlFilter } = require('./webhookRegistration');
 const { processAttachments } = require('./attachmentMaterialisation');
@@ -82,14 +84,45 @@ async function runIntegrationBackup(integrationId) {
 
   // 2. Determine project keys to back up
   let projectKeys = [];
-  if (connection.projectScopeMode === 'selected' && connection.selectedProjectIds.length > 0) {
+  if (connection.projectScopeMode === 'selected' && connection.selectedProjectIds && connection.selectedProjectIds.length > 0) {
     projectKeys = connection.selectedProjectIds;
   } else {
-    // All projects mode — derive from projectNodes or use a placeholder
-    // In a real implementation, enumerate projects from Jira API
-    projectKeys = [...db.projectNodes.values()]
-      .filter((p) => p.integrationId === integrationId)
-      .map((p) => p.projectKey);
+    // All projects mode — enumerate from Jira API, fall back to cached nodes.
+    try {
+      const projectSearchUrl = `${JIRA_API_BASE}/${cloudId}/rest/api/3/project/search`;
+      let startAt = 0;
+      while (true) {
+        const resp = await jiraAxios.get(projectSearchUrl, {
+          params: { startAt, maxResults: 50 },
+        });
+        const { values = [], isLast } = resp.data;
+        for (const p of values) {
+          if (p.key && !projectKeys.includes(p.key)) {
+            projectKeys.push(p.key);
+          }
+          const nodeKey = `${integrationId}:${p.key}`;
+          db.projectNodes.set(nodeKey, {
+            integrationId,
+            cloudId,
+            projectKey: p.key,
+            key: p.key,
+            name: p.name,
+            id: p.id,
+            projectTypeKey: p.projectTypeKey,
+            archived: p.archived || false,
+          });
+        }
+        startAt += values.length || 50;
+        if (isLast || values.length === 0) break;
+      }
+      console.info(`[backup] Enumerated ${projectKeys.length} project(s) from Jira API for integration ${integrationId}`);
+    } catch (err) {
+      console.warn(`[backup] Could not enumerate projects from Jira API (${err.message}); falling back to cached project nodes`);
+      projectKeys = [...db.projectNodes.values()]
+        .filter((p) => p.integrationId === integrationId)
+        .map((p) => p.projectKey || p.key)
+        .filter(Boolean);
+    }
   }
 
   // 3. Run per-project backup

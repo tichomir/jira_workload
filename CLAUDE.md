@@ -1561,3 +1561,805 @@ Finally if I try to backup again, I'm getting unauthorized here are the logs:
 - ⏭ End-to-end regression tests: backup auth refresh, browse, and restore verification — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 3 — Backup & Restore End-to-End Fix | 2026-05-01 | ✅ done | 28 SP
+**Goal:** BACKUP AND RESTORE DOESN'T WORK. 
+
+I have backed something.. .but Have no idea what.. I cannot browse the data I backed up. it says there rae some objects, but there is absolutely no way to browse it. 
+
+I cannot restored it... or wait it says it resotred something, but then I go to JIRA in the project and I don't see any restored data !!!
+
+Finally if I try to backup again, I'm getting unauthorized here are the logs: 
+
+2026-05-01T14:52:51.351Z POST /api/connections/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backup
+[backup] Backup run failed: jobId=7bbfdca7-90fc-4de0-9056-918b1e6dbcc5 connectionId=fa0fd9eb-16ab-4983-a03d-732be8e92f63 AxiosError: Request failed with status code 401
+    at settle (/app/node_modules/axios/dist/node/axios.cjs:1970:12)
+    at IncomingMessage.handleStreamEnd (/app/node_modules/axios/dist/node/axios.cjs:3377:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (/app/node_modules/axios/dist/node/axios.cjs:4517:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async enumerateCustomFields (/app/src/services/siteObjectEnumeration.js:76:20)
+    at async Promise.all (index 1)
+    at async runSiteEnumeration (/app/src/services/siteObjectEnumeration.js:165:31)
+    at async runIntegrationBackup (/app/src/services/backupEngine.js:105:26) {
+  isAxiosError: true,
+  code: 'ERR_BAD_REQUEST',
+  config: [Object: null prototype] {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false,
+      legacyInterceptorReqResOrdering: true
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 0,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      Authorization: 'Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg',
+      'User-Agent': 'axios/1.15.2',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    method: 'get',
+    url: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'api.atlassian.com',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'api.atlassian.com',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 443647,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 2030,
+        [Symbol(triggerId)]: 2028
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object],
+      [Symbol(axios.http.socketListener)]: true,
+      [Symbol(axios.http.currentReq)]: [Writable]
+    },
+    _header: 'GET /ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'Authorization: Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg\r\n' +
+      'User-Agent: axios/1.15.2\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: api.atlassian.com\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype],
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 2,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: false,
+    joinDuplicateHeaders: undefined,
+    path: '/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 401,
+      statusMessage: 'Unauthorized',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 40,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: false,
+    host: 'api.atlassian.com',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 4,
+      _onNativeResponse: [Function (anonymous)],
+      _headerFilter: /^(?:Authorization|Proxy-Authorization|Cookie)$/i,
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      authorization: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 401,
+    statusText: 'Unauthorized',
+    headers: Object [AxiosHeaders] {
+      'content-type': 'application/json',
+      'content-length': '37',
+      connection: 'keep-alive',
+      date: 'Fri, 01 May 2026 14:52:51 GMT',
+      'x-trace-id': 'eea4b2e5728b492aa4f5c3ff762aa267',
+      'x-failure-category': 'FAILURE_CLIENT_AUTH',
+      'x-frame-options': 'SameOrigin',
+      'x-content-type-options': 'nosniff',
+      'x-xss-protection': '1; mode=block',
+      'atl-traceid': 'eea4b2e5728b492aa4f5c3ff762aa267',
+      'atl-request-id': 'eea4b2e5-728b-492a-a4f5-c3ff762aa267',
+      'strict-transport-security': 'max-age=63072000; preload',
+      'report-to': '{"endpoints": [{"url": "https://dz8aopenkvv6s.cloudfront.net"}], "group": "endpoint-1", "include_subdomains": true, "max_age": 600}',
+      nel: '{"failure_fraction": 0.01, "include_subdomains": true, "max_age": 600, "report_to": "endpoint-1"}',
+      'server-timing': 'atl-edge;dur=10,atl-edge-internal;dur=2,atl-edge-upstream;dur=9,atl-edge-pop;desc="aws-eu-central-1"',
+      server: 'AtlassianEdge',
+      'x-cache': 'Error from cloudfront',
+      via: '1.1 3a52599b74209adc8297b59f7eaa4bce.cloudfront.net (CloudFront)',
+      'x-amz-cf-pop': 'FRA56-P9',
+      'x-amz-cf-id': 'DrP7QMoKsBZtlLxiJEr6e8hJO81mCX9pk4V5VNDvJwnCYLqdE5D-4A=='
+    },
+    config: [Object: null prototype] {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 0,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      method: 'get',
+      url: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'Authorization: Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg\r\n' +
+        'User-Agent: axios/1.15.2\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: api.atlassian.com\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: false,
+      joinDuplicateHeaders: undefined,
+      path: '/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/field',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: false,
+      host: 'api.atlassian.com',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { code: 401, message: 'Unauthorized' }
+  },
+  status: 401
+}
+2026-05-01T14:52:54.370Z GET /api/v1/integrations/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backup/7bbfdca7-90fc-4de0-9056-918b1e6dbcc5
+2026-05-01T14:52:54.383Z GET /api/connections/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backups
+2026-05-01T14:53:10.798Z GET /connections.html
+2026-05-01T14:53:10.836Z GET /styles.css
+2026-05-01T14:53:10.844Z GET /api/connections
+2026-05-01T14:53:12.332Z GET /health
+2026-05-01T14:53:14.017Z GET /backups.html?connectionId=0f0351a0-b43e-4905-9c42-ee7bbff36301
+2026-05-01T14:53:14.059Z GET /styles.css
+2026-05-01T14:53:14.119Z GET /api/v1/integrations/0f0351a0-b43e-4905-9c42-ee7bbff36301
+2026-05-01T14:53:14.151Z GET /api/connections/0f0351a0-b43e-4905-9c42-ee7bbff36301/backups
+2026-05-01T14:53:15.856Z POST /api/connections/0f0351a0-b43e-4905-9c42-ee7bbff36301/backup
+2026-05-01T14:53:19.277Z GET /connections.html
+2026-05-01T14:53:19.297Z GET /styles.css
+2026-05-01T14:53:19.310Z GET /api/connections
+2026-05-01T14:53:21.470Z GET /backups.html?connectionId=fa0fd9eb-16ab-4983-a03d-732be8e92f63
+2026-05-01T14:53:21.497Z GET /styles.css
+2026-05-01T14:53:21.506Z GET /api/v1/integrations/fa0fd9eb-16ab-4983-a03d-732be8e92f63
+2026-05-01T14:53:21.552Z GET /api/connections/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backups
+2026-05-01T14:53:27.505Z POST /api/v1/integrations/fa0fd9eb-16ab-4983-a03d-732be8e92f63/restore-backup
+2026-05-01T14:53:43.281Z GET /health
+2026-05-01T14:53:59.122Z GET /connections.html
+2026-05-01T14:53:59.138Z GET /styles.css
+2026-05-01T14:53:59.149Z GET /api/connections
+2026-05-01T14:54:00.083Z GET /backups.html?connectionId=fa0fd9eb-16ab-4983-a03d-732be8e92f63
+2026-05-01T14:54:00.120Z GET /styles.css
+2026-05-01T14:54:00.159Z GET /api/v1/integrations/fa0fd9eb-16ab-4983-a03d-732be8e92f63
+2026-05-01T14:54:00.184Z GET /api/connections/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backups
+2026-05-01T14:54:02.562Z POST /api/connections/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backup
+[backup] Backup run failed: jobId=d13443a2-2ee4-45b2-bda1-bb5615f733ef connectionId=fa0fd9eb-16ab-4983-a03d-732be8e92f63 AxiosError: Request failed with status code 401
+    at settle (/app/node_modules/axios/dist/node/axios.cjs:1970:12)
+    at IncomingMessage.handleStreamEnd (/app/node_modules/axios/dist/node/axios.cjs:3377:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (/app/node_modules/axios/dist/node/axios.cjs:4517:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async paginateWithIsLast (/app/src/services/siteObjectEnumeration.js:28:22)
+    at async enumerateWorkflows (/app/src/services/siteObjectEnumeration.js:51:21)
+    at async Promise.all (index 0)
+    at async runSiteEnumeration (/app/src/services/siteObjectEnumeration.js:165:31)
+    at async runIntegrationBackup (/app/src/services/backupEngine.js:105:26) {
+  isAxiosError: true,
+  code: 'ERR_BAD_REQUEST',
+  config: [Object: null prototype] {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false,
+      legacyInterceptorReqResOrdering: true
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 0,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      Authorization: 'Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg',
+      'User-Agent': 'axios/1.15.2',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    params: { startAt: 0, maxResults: 50 },
+    method: 'get',
+    url: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'api.atlassian.com',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'api.atlassian.com',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 514918,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 2438,
+        [Symbol(triggerId)]: 2436
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object],
+      [Symbol(axios.http.socketListener)]: true,
+      [Symbol(axios.http.currentReq)]: [Writable]
+    },
+    _header: 'GET /ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50 HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'Authorization: Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg\r\n' +
+      'User-Agent: axios/1.15.2\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: api.atlassian.com\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype],
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 2,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: false,
+    joinDuplicateHeaders: undefined,
+    path: '/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 401,
+      statusMessage: 'Unauthorized',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 40,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: false,
+    host: 'api.atlassian.com',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 4,
+      _onNativeResponse: [Function (anonymous)],
+      _headerFilter: /^(?:Authorization|Proxy-Authorization|Cookie)$/i,
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      authorization: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 401,
+    statusText: 'Unauthorized',
+    headers: Object [AxiosHeaders] {
+      'content-type': 'application/json',
+      'content-length': '37',
+      connection: 'keep-alive',
+      date: 'Fri, 01 May 2026 14:54:02 GMT',
+      'x-trace-id': 'c2818c58bd354df8b0a14f8b3d2d6ba2',
+      'x-failure-category': 'FAILURE_CLIENT_AUTH',
+      'x-frame-options': 'SameOrigin',
+      'x-content-type-options': 'nosniff',
+      'x-xss-protection': '1; mode=block',
+      'atl-traceid': 'c2818c58bd354df8b0a14f8b3d2d6ba2',
+      'atl-request-id': 'c2818c58-bd35-4df8-b0a1-4f8b3d2d6ba2',
+      'strict-transport-security': 'max-age=63072000; preload',
+      'report-to': '{"endpoints": [{"url": "https://dz8aopenkvv6s.cloudfront.net"}], "group": "endpoint-1", "include_subdomains": true, "max_age": 600}',
+      nel: '{"failure_fraction": 0.01, "include_subdomains": true, "max_age": 600, "report_to": "endpoint-1"}',
+      'server-timing': 'atl-edge;dur=10,atl-edge-internal;dur=2,atl-edge-upstream;dur=9,atl-edge-pop;desc="aws-eu-central-1"',
+      server: 'AtlassianEdge',
+      'x-cache': 'Error from cloudfront',
+      via: '1.1 a9a00cd74e5659e3b49c7fab5dc2863a.cloudfront.net (CloudFront)',
+      'x-amz-cf-pop': 'FRA56-P12',
+      'x-amz-cf-id': 'pHOFkZpUHikZT4asFkJ0zemkOKLYrbzyMyovteh-6epHW8HbtqpweQ=='
+    },
+    config: [Object: null prototype] {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 0,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      params: [Object],
+      method: 'get',
+      url: 'https://api.atlassian.com/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50 HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'Authorization: Bearer eyJraWQiOiJhdXRoLmF0bGFzc2lhbi5jb20tQUNDRVNTLTM3ZjYwOTRiLTMzNjItNDk3ZC1hYmVlLWZmYTJkOWJiZmFiMiIsImFsZyI6IlJTMjU2In0.eyJqdGkiOiIyZDdhNjA2My1iZWIyLTRhODctOTBlZS03MTI1OTcwZjdjMmIiLCJzdWIiOiI3MTIwMjA6NDg1ODc2YzItOGZlZC00YWYyLWFjNjAtNGYwN2RkNDE0ODUyIiwibmJmIjoxNzc3NjQzMjQ4LCJpc3MiOiJodHRwczovL2F1dGguYXRsYXNzaWFuLmNvbSIsImlhdCI6MTc3NzY0MzI0OCwiZXhwIjoxNzc3NjQ2ODQ4LCJhdWQiOiIxaENNSU5LaXVHRE95V3VHa0k0Qm5NUWhxOG13UEVhOSIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9vYXV0aENsaWVudElkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vdWp0IjoiMjJmNjY5ZmUtZDFmNC00Y2Q1LWIwM2YtODQ1NmNkMWVkNmM1IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2VtYWlsRG9tYWluIjoieWFob28uY29tIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbCI6IjEzMDgxOWIxLTM4MWItNDNkNi05MGE4LWQ2NjM2MjM4YWNmNkBjb25uZWN0LmF0bGFzc2lhbi5jb20iLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vc2Vzc2lvbl9pZCI6ImI4ZDdiYjJhLWZjZWEtNDUyYS1iNGY3LWVjYzViNzI1OTZiMyIsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS9hdXRoUHJvZmlsZSI6Im9hdXRoLmVjb3N5c3RlbS5vYXV0aEludGVncmF0aW9uIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL2F0bF90b2tlbl90eXBlIjoiQUNDRVNTIiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRJZCI6IjcxMjAyMDowZDY2NzFiNi1mNjdlLTRiMmItYTk1Mi00Y2Y5NTgxYjg0ODIiLCJodHRwczovL2F0bGFzc2lhbi5jb20vZmlyc3RQYXJ0eSI6ZmFsc2UsImh0dHBzOi8vYXRsYXNzaWFuLmNvbS92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3Byb2Nlc3NSZWdpb24iOiJ1cy1lYXN0LTEiLCJzY29wZSI6Im1hbmFnZTpqaXJhLWNvbmZpZ3VyYXRpb24gbWFuYWdlOmppcmEtcHJvamVjdCBtYW5hZ2U6amlyYS13ZWJob29rIG9mZmxpbmVfYWNjZXNzIHJlYWQ6Ym9hcmQtc2NvcGU6amlyYS1zb2Z0d2FyZSByZWFkOmVwaWM6amlyYS1zb2Z0d2FyZSByZWFkOmZpZWxkOmppcmEgcmVhZDppc3N1ZS10eXBlOmppcmEgcmVhZDppc3N1ZTpqaXJhIHJlYWQ6amlyYS11c2VyIHJlYWQ6amlyYS13b3JrIHJlYWQ6cHJvamVjdDpqaXJhIHJlYWQ6c3ByaW50OmppcmEtc29mdHdhcmUgcmVhZDp1c2VyOmppcmEgd3JpdGU6ZXBpYzpqaXJhLXNvZnR3YXJlIHdyaXRlOmZpZWxkOmppcmEgd3JpdGU6aXNzdWU6amlyYSB3cml0ZTpqaXJhLXdvcmsgd3JpdGU6cHJvamVjdDpqaXJhIHdyaXRlOnNwcmludDpqaXJhLXNvZnR3YXJlIiwiY2xpZW50X2lkIjoiMWhDTUlOS2l1R0RPeVd1R2tJNEJuTVFocThtd1BFYTkiLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcmVmcmVzaF9jaGFpbl9pZCI6IjFoQ01JTktpdUdET3lXdUdrSTRCbk1RaHE4bXdQRWE5LTcxMjAyMDo0ODU4NzZjMi04ZmVkLTRhZjItYWM2MC00ZjA3ZGQ0MTQ4NTItMjM5MzM5NTItN2MyMS00NWU4LTg2NDQtMDcyMWQxMTg3ZWM4IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tLzNsbyI6dHJ1ZSwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL2FjY291bnRUeXBlIjoiYXRsYXNzaWFuIiwiaHR0cHM6Ly9pZC5hdGxhc3NpYW4uY29tL3ZlcmlmaWVkIjp0cnVlLCJodHRwczovL2lkLmF0bGFzc2lhbi5jb20vcnRpIjoiODQ5OTMwMjktZjkzZC00ZmFkLWJmNTAtZWIxYzkxZmE4OTQ3IiwiaHR0cHM6Ly9hdGxhc3NpYW4uY29tL3N5c3RlbUFjY291bnRFbWFpbERvbWFpbiI6ImNvbm5lY3QuYXRsYXNzaWFuLmNvbSJ9.qT05IDWXbcxpor9GWWoMuETUiFJoM64E-dWicCtZ_QGOJx2l2ETuBx35zykKJDr-EqLCTxSU_7MXk2MXln1qCqwzmS0xQv80hr91KI8GGhFHp4Q0qMNZ7DAxpfRmLI6xJvA2zC7tZP394GIRq5JddCoBhkzU6-Qrfr554Rxt7pGAFIs86NosccR7JqmeJbmVeACPISH5QYJVQTpsAkXEb9vu6VIdg5whJL_0DXopkRuiLTOd1WLBYreDkYpcT16lxC4MdfxGP_bhSgMCPiktvUdJA9VKwmYypAddQqUdTi8h_F7vLOpbaSepKw99857jLhPCpKOoBarLPMeJj6gPrg\r\n' +
+        'User-Agent: axios/1.15.2\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: api.atlassian.com\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: false,
+      joinDuplicateHeaders: undefined,
+      path: '/ex/jira/e2f3e272-f44d-4fee-a2c9-48573056d476/rest/api/3/workflow/search?startAt=0&maxResults=50',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: false,
+      host: 'api.atlassian.com',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { code: 401, message: 'Unauthorized' }
+  },
+  status: 401
+}
+2026-05-01T14:54:05.591Z GET /api/v1/integrations/fa0fd9eb-16ab-4983-a03d-732be8e92f63/backup/d13443a2-2ee4-45b2-bda1-bb5615f733ef
+
+**Delivered:**
+- ✅ Diagnose root cause of 401 on Atlassian API during backup — Software Architect (◈ Standard, 3 SP)
+- ✅ Implement OAuth token refresh and retry interceptor for backup engine — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix backup content browsing: expose enumerated objects in backup detail API — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix restore: write objects to Jira and surface result in UI — Backend Developer (◉ Deep, 5 SP)
+- ✅ End-to-end regression tests: backup auth refresh, browse, and restore verification — Qa Engineer (◈ Standard, 3 SP)
+- ✅ Fix: pre-existing test suite failures in sprint4, sprint2, and sprint14-backup-field-filter — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: backupEngine project enumeration fallback may silently skip pagination — Backend Developer (◈ Standard, 3 SP)
+- ✅ Fix: URL-matching order bugs in setupJiraMockForBackup — Qa Engineer (◈ Standard, 3 SP)
+
+---

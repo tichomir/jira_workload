@@ -108,6 +108,7 @@ function seedConnection(overrides = {}) {
       'read:board-scope:jira-software',
     ],
     accessToken:         'enc:mock-access-token-sprint14',
+    accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
     refreshToken:        'enc:mock-refresh-token-sprint14',
     projectScopeMode:    'all',
     selectedProjectIds:  [],
@@ -133,6 +134,15 @@ function seedConnection(overrides = {}) {
  *  - GET /field/<any-system-id>/context   → 404 (to expose the bug if it regresses)
  */
 function mockBackupApiCalls() {
+  // axios.create() must return an instance that delegates to the mocked axios.get/post
+  // and has an interceptors stub so createJiraAxiosInstance doesn't throw.
+  const axiosInstance = {
+    get: (...args) => axios.get(...args),
+    post: (...args) => axios.post(...args),
+    interceptors: { response: { use: jest.fn() }, request: { use: jest.fn() } },
+  };
+  axios.create.mockReturnValue(axiosInstance);
+
   axios.get.mockImplementation((url) => {
     // Webhook list check
     if (url.includes('/rest/api/3/webhook')) {

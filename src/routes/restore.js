@@ -32,9 +32,9 @@ function errorResponse(res, status, code, message, extra) {
 
 // ── POST /api/v1/restore ──────────────────────────────────────────────────────
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const body = req.body || {};
-  const { backupPointId, sourceSiteId, destination, conflictMode, objectSelection } = body;
+  const { backupPointId, sourceSiteId, destination, conflictMode, objectSelection, connectionId } = body;
 
   // Validate required fields
   if (!backupPointId) {
@@ -56,8 +56,13 @@ router.post('/', (req, res) => {
       'conflictMode "merge" is permanently excluded. Use "skip", "override", or "ask".');
   }
 
-  const restoreRequest = { backupPointId, sourceSiteId, destination, conflictMode, objectSelection };
-  const result = initiateRestore(restoreRequest);
+  const restoreRequest = { backupPointId, sourceSiteId, destination, conflictMode, objectSelection, connectionId };
+  let result;
+  try {
+    result = await initiateRestore(restoreRequest);
+  } catch (err) {
+    return errorResponse(res, 500, 'RESTORE_FAILED', err.message || 'Restore pipeline failed');
+  }
 
   // Validation blocking error
   if (result.__validationError) {
@@ -171,7 +176,7 @@ router.get('/:restoreJobId', (req, res) => {
 
 // ── POST /api/v1/restore/:restoreJobId/conflict-decision ──────────────────────
 
-router.post('/:restoreJobId/conflict-decision', (req, res) => {
+router.post('/:restoreJobId/conflict-decision', async (req, res) => {
   const { restoreJobId } = req.params;
   const { itemId, decision } = req.body || {};
 
@@ -181,7 +186,7 @@ router.post('/:restoreJobId/conflict-decision', (req, res) => {
   }
 
   try {
-    const result = submitConflictDecision(restoreJobId, itemId, decision);
+    const result = await submitConflictDecision(restoreJobId, itemId, decision);
     return res.status(200).json(result);
   } catch (err) {
     if (err.code === 'RESTORE_JOB_NOT_FOUND') {

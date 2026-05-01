@@ -90,7 +90,7 @@ function buildBasket(backupPointId, objectSelection) {
       }
     }
 
-    items.push({ id, objectType, fields: fields || {}, issueKey: issueKey || id, snapshotKey: key });
+    items.push({ id, objectType, fields: fields || {}, issueKey: issueKey || (fields && fields.key) || id, snapshotKey: key });
   }
 
   // If no snapshots in db, produce an empty basket (simulation with no seed data)
@@ -258,8 +258,9 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         }
       }
 
+      if (!jiraAxios) return { targetId: uuidv4(), targetKey: null, payload: issuePayload };
       const resp = await jiraAxios.post(`${base}/rest/api/3/issue`, issuePayload);
-      return { targetId: resp.data.id, targetKey: resp.data.key };
+      return { targetId: resp.data.id, targetKey: resp.data.key, payload: issuePayload };
     }
 
     case 'comment': {
@@ -291,8 +292,9 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         );
       }
 
+      if (!jiraAxios) return { targetId: uuidv4(), payload: { fields: { body: adfBody } } };
       const resp = await jiraAxios.post(`${base}/rest/api/3/issue/${targetIssueKey}/comment`, { body: adfBody });
-      return { targetId: resp.data.id };
+      return { targetId: resp.data.id, payload: { fields: { body: adfBody } } };
     }
 
     case 'workflow': {
@@ -302,6 +304,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
       } catch (err) {
         throw Object.assign(new Error('Cannot restore workflow: missing definition'), { code: 'WORKFLOW_DEFINITION_MISSING' });
       }
+      if (!jiraAxios) return { targetId: uuidv4(), payload };
       const resp = await jiraAxios.post(`${base}/rest/api/3/workflow/create`, payload);
       return { targetId: resp.data.id || resp.data.entityId || uuidv4() };
     }
@@ -315,6 +318,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         name: fields.name || 'Restored Field',
         type: (fields.schema && fields.schema.custom) || 'com.atlassian.jira.plugin.system.customfieldtypes:textfield',
       };
+      if (!jiraAxios) return { targetId: uuidv4(), payload: fieldPayload };
       const resp = await jiraAxios.post(`${base}/rest/api/3/field`, fieldPayload);
       return { targetId: resp.data.id };
     }
@@ -330,6 +334,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
       if (fields.lead && fields.lead.accountId) {
         projPayload.leadAccountId = fields.lead.accountId;
       }
+      if (!jiraAxios) return { targetId: uuidv4(), payload: projPayload };
       const resp = await jiraAxios.post(`${base}/rest/api/3/project`, projPayload);
       return { targetId: String(resp.data.id) };
     }
@@ -340,6 +345,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         type: fields.type || 'scrum',
         filterId: fields.filterId,
       };
+      if (!jiraAxios) return { targetId: uuidv4(), payload: boardPayload };
       const resp = await jiraAxios.post(`${base}/rest/agile/1.0/board`, boardPayload);
       return { targetId: String(resp.data.id) };
     }
@@ -357,6 +363,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         startDate: fields.startDate,
         endDate: fields.endDate,
       };
+      if (!jiraAxios) return { targetId: uuidv4(), payload: sprintPayload };
       const resp = await jiraAxios.post(`${base}/rest/agile/1.0/sprint`, sprintPayload);
       return { targetId: String(resp.data.id) };
     }
@@ -397,7 +404,7 @@ async function applyObjectToDestination(restoreJobId, item, destination, fieldMa
 
   // Original or alternate destination: write to Jira API
   try {
-    const { targetId, targetKey } = await writeObjectToJira(
+    const { targetId, targetKey, payload } = await writeObjectToJira(
       jiraAxios, cloudId, item, destination, targetProjectKey, fieldMap, sourceToTargetIssueKey,
     );
 
@@ -408,6 +415,7 @@ async function applyObjectToDestination(restoreJobId, item, destination, fieldMa
       id: item.id,
       targetId,
       targetKey: targetKey || null,
+      payload: payload || null,
       destination,
     });
 

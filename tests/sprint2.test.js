@@ -1219,12 +1219,14 @@ describe('AC: Site-Level Enumeration runs even with empty project scope', () => 
     });
 
     // No project-level JQL calls needed (no projects), but site enumeration must fire.
+    // webhookRegistration.fetchExistingWebhooks makes a GET /webhook call before registering
     // workflow/search
+    // /field
+    // contexts for cf-x (cf-x doesn't start with customfield_ so filtered out, mock unused)
     axios.get
+      .mockResolvedValueOnce({ data: { values: [] } })  // GET /webhook — no existing webhooks
       .mockResolvedValueOnce({ data: { values: [{ id: 'wf-x', name: 'WFX' }], isLast: true } })
-      // /field
       .mockResolvedValueOnce({ data: [{ id: 'cf-x', name: 'CFX', schema: { type: 'number' } }] })
-      // contexts for cf-x
       .mockResolvedValueOnce({ data: { values: [], isLast: true } });
 
     // Webhook registration
@@ -1416,10 +1418,12 @@ describe('Integration Smoke Test — full pipeline end-to-end', () => {
     axios.post.mockResolvedValueOnce({
       data: { webhookRegistrationResult: [{ createdWebhookId: 888 }] },
     });
+    // project/search (all-projects mode enumerates from API first)
     // workflow/search
+    // /field
     axios.get
       .mockResolvedValueOnce({ data: { values: [], isLast: true } })
-      // /field
+      .mockResolvedValueOnce({ data: { values: [], isLast: true } })
       .mockResolvedValueOnce({ data: [] });
 
     const res = await request(app)

@@ -108,25 +108,25 @@ function makeBasicRestoreRequest(overrides = {}) {
 describe('Unit — checkOAuthTokenValidity', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: no connections in db (simulation context)', () => {
+  test('PASS: no connections in db (simulation context)', async () => {
     const result = checkOAuthTokenValidity('site-a');
     expect(result.passed).toBe(true);
     expect(result.blocking).toBe(true);
   });
 
-  test('PASS: valid non-expired token for target site', () => {
+  test('PASS: valid non-expired token for target site', async () => {
     seedConnection({ cloudId: 'site-a', accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString() });
     const result = checkOAuthTokenValidity('site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('PASS: token exists but no expiry tracked', () => {
+  test('PASS: token exists but no expiry tracked', async () => {
     seedConnection({ cloudId: 'site-a', accessToken: 'tok', accessTokenExpiresAt: null });
     const result = checkOAuthTokenValidity('site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL (blocking): expired token for target site', () => {
+  test('FAIL (blocking): expired token for target site', async () => {
     seedConnection({ cloudId: 'site-a', accessTokenExpiresAt: new Date(Date.now() - 1000).toISOString() });
     const result = checkOAuthTokenValidity('site-a');
     expect(result.passed).toBe(false);
@@ -134,14 +134,14 @@ describe('Unit — checkOAuthTokenValidity', () => {
     expect(result.errorCode).toBe('OAUTH_TOKEN_INVALID');
   });
 
-  test('FAIL (blocking): connection deleted', () => {
+  test('FAIL (blocking): connection deleted', async () => {
     seedConnection({ cloudId: 'site-a', deletedAt: new Date().toISOString() });
     const result = checkOAuthTokenValidity('site-a');
     expect(result.passed).toBe(false);
     expect(result.blocking).toBe(true);
   });
 
-  test('PASS: matches by siteId field', () => {
+  test('PASS: matches by siteId field', async () => {
     seedConnection({ cloudId: 'other', siteId: 'site-b', accessToken: 'tok', accessTokenExpiresAt: null });
     const result = checkOAuthTokenValidity('site-b');
     expect(result.passed).toBe(true);
@@ -151,18 +151,18 @@ describe('Unit — checkOAuthTokenValidity', () => {
 describe('Unit — checkTargetProjectExistence', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: no project nodes in db (simulation)', () => {
+  test('PASS: no project nodes in db (simulation)', async () => {
     const result = checkTargetProjectExistence('PROJ', 'site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('PASS: project exists on target site', () => {
+  test('PASS: project exists on target site', async () => {
     seedProject({ key: 'PROJ', cloudId: 'site-a' });
     const result = checkTargetProjectExistence('PROJ', 'site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL (blocking): project exists but on different site', () => {
+  test('FAIL (blocking): project exists but on different site', async () => {
     seedProject({ key: 'PROJ', cloudId: 'site-b' });
     const result = checkTargetProjectExistence('PROJ', 'site-a');
     expect(result.passed).toBe(false);
@@ -170,7 +170,7 @@ describe('Unit — checkTargetProjectExistence', () => {
     expect(result.errorCode).toBe('TARGET_PROJECT_NOT_FOUND');
   });
 
-  test('FAIL (blocking): project key mismatch', () => {
+  test('FAIL (blocking): project key mismatch', async () => {
     seedProject({ key: 'OTHER', cloudId: 'site-a' });
     const result = checkTargetProjectExistence('PROJ', 'site-a');
     expect(result.passed).toBe(false);
@@ -181,13 +181,13 @@ describe('Unit — checkTargetProjectExistence', () => {
 describe('Unit — checkTargetProjectArchiveStatus', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: project not archived', () => {
+  test('PASS: project not archived', async () => {
     seedProject({ key: 'PROJ', cloudId: 'site-a', archived: false });
     const result = checkTargetProjectArchiveStatus('PROJ', 'site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL (blocking): project is archived', () => {
+  test('FAIL (blocking): project is archived', async () => {
     seedProject({ key: 'PROJ', cloudId: 'site-a', archived: true });
     const result = checkTargetProjectArchiveStatus('PROJ', 'site-a');
     expect(result.passed).toBe(false);
@@ -195,7 +195,7 @@ describe('Unit — checkTargetProjectArchiveStatus', () => {
     expect(result.errorCode).toBe('TARGET_PROJECT_ARCHIVED');
   });
 
-  test('PASS: no matching project (no archive flag set)', () => {
+  test('PASS: no matching project (no archive flag set)', async () => {
     seedProject({ key: 'OTHER', cloudId: 'site-a', archived: true });
     const result = checkTargetProjectArchiveStatus('PROJ', 'site-a');
     expect(result.passed).toBe(true);
@@ -205,18 +205,18 @@ describe('Unit — checkTargetProjectArchiveStatus', () => {
 describe('Unit — checkJiraSoftwareActive', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: no connections (simulation)', () => {
+  test('PASS: no connections (simulation)', async () => {
     const result = checkJiraSoftwareActive('site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('PASS: connection has read:board-scope:jira-software', () => {
+  test('PASS: connection has read:board-scope:jira-software', async () => {
     seedConnection({ cloudId: 'site-a', grantedScopes: ['read:board-scope:jira-software'] });
     const result = checkJiraSoftwareActive('site-a');
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL (blocking): connection lacks board scope', () => {
+  test('FAIL (blocking): connection lacks board scope', async () => {
     seedConnection({ cloudId: 'site-a', grantedScopes: ['read:jira-work'] });
     const result = checkJiraSoftwareActive('site-a');
     expect(result.passed).toBe(false);
@@ -224,7 +224,7 @@ describe('Unit — checkJiraSoftwareActive', () => {
     expect(result.errorCode).toBe('JIRA_SOFTWARE_NOT_ACTIVE');
   });
 
-  test('FAIL (blocking): connection deleted even with correct scope', () => {
+  test('FAIL (blocking): connection deleted even with correct scope', async () => {
     seedConnection({ cloudId: 'site-a', grantedScopes: ['read:board-scope:jira-software'], deletedAt: new Date().toISOString() });
     const result = checkJiraSoftwareActive('site-a');
     expect(result.passed).toBe(false);
@@ -232,14 +232,14 @@ describe('Unit — checkJiraSoftwareActive', () => {
 });
 
 describe('Unit — checkWorkflowStatusNames', () => {
-  test('PASS: no workflow items in basket', () => {
+  test('PASS: no workflow items in basket', async () => {
     const items = [{ objectType: 'issue', id: '1', fields: {} }];
     const result = checkWorkflowStatusNames(items);
     expect(result.passed).toBe(true);
     expect(result.blocking).toBe(false);
   });
 
-  test('PASS: workflow with valid status names', () => {
+  test('PASS: workflow with valid status names', async () => {
     const items = [{
       objectType: 'workflow', id: 'wf1',
       fields: { statuses: [{ id: 's1', name: 'To Do' }, { id: 's2', name: 'Done' }] },
@@ -248,7 +248,7 @@ describe('Unit — checkWorkflowStatusNames', () => {
     expect(result.passed).toBe(true);
   });
 
-  test('WARN (non-blocking): workflow status with blank name', () => {
+  test('WARN (non-blocking): workflow status with blank name', async () => {
     const items = [{
       objectType: 'workflow', id: 'wf1',
       fields: { statuses: [{ id: 's1', name: '' }] },
@@ -260,7 +260,7 @@ describe('Unit — checkWorkflowStatusNames', () => {
     expect(result.affectedItems).toContain('s1');
   });
 
-  test('WARN (non-blocking): workflow status with missing name field', () => {
+  test('WARN (non-blocking): workflow status with missing name field', async () => {
     const items = [{
       objectType: 'workflow', id: 'wf1',
       fields: { statuses: [{ id: 's2' }] },
@@ -274,20 +274,20 @@ describe('Unit — checkWorkflowStatusNames', () => {
 describe('Unit — checkCustomFieldPresence', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: no custom fields in basket (no issues)', () => {
+  test('PASS: no custom fields in basket (no issues)', async () => {
     const { requiredResult, optionalResult } = checkCustomFieldPresence([], 'site-a');
     expect(requiredResult.passed).toBe(true);
     expect(optionalResult.passed).toBe(true);
   });
 
-  test('PASS: no customFieldDefinitions in db (simulation)', () => {
+  test('PASS: no customFieldDefinitions in db (simulation)', async () => {
     const items = [{ objectType: 'issue', id: 'i1', fields: { customfield_10001: 'val' } }];
     const { requiredResult, optionalResult } = checkCustomFieldPresence(items, 'site-a');
     expect(requiredResult.passed).toBe(true);
     expect(optionalResult.passed).toBe(true);
   });
 
-  test('FAIL (blocking): required custom field missing on target site', () => {
+  test('FAIL (blocking): required custom field missing on target site', async () => {
     // Seed a field definition for site-a so db.customFieldDefinitions.size > 0
     db.customFieldDefinitions.set('site-a:customfield_99999', { name: 'Other Field', fieldId: 'customfield_99999' });
     const items = [{
@@ -302,7 +302,7 @@ describe('Unit — checkCustomFieldPresence', () => {
     expect(requiredResult.affectedItems).toContain('customfield_10001');
   });
 
-  test('WARN (non-blocking): optional custom field missing on target site', () => {
+  test('WARN (non-blocking): optional custom field missing on target site', async () => {
     db.customFieldDefinitions.set('site-a:customfield_99999', { name: 'Other Field', fieldId: 'customfield_99999' });
     const items = [{
       objectType: 'issue', id: 'i1',
@@ -316,7 +316,7 @@ describe('Unit — checkCustomFieldPresence', () => {
     expect(optionalResult.errorCode).toBe('CUSTOM_FIELD_OPTIONAL_MISSING');
   });
 
-  test('PASS: custom field exists on target site', () => {
+  test('PASS: custom field exists on target site', async () => {
     db.customFieldDefinitions.set('site-a:customfield_10001', { name: 'Sprint', fieldId: 'customfield_10001' });
     const items = [{
       objectType: 'issue', id: 'i1',
@@ -329,18 +329,18 @@ describe('Unit — checkCustomFieldPresence', () => {
 });
 
 describe('Unit — checkAttachmentSize', () => {
-  test('PASS: no attachments in basket', () => {
+  test('PASS: no attachments in basket', async () => {
     const result = checkAttachmentSize([{ objectType: 'issue', id: 'i1', fields: {} }]);
     expect(result.passed).toBe(true);
   });
 
-  test('PASS: attachment at exactly 250 MB', () => {
+  test('PASS: attachment at exactly 250 MB', async () => {
     const items = [{ objectType: 'attachment', id: 'a1', sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL (blocking): attachment at 250 MB + 1 byte', () => {
+  test('FAIL (blocking): attachment at 250 MB + 1 byte', async () => {
     const items = [{ objectType: 'attachment', id: 'a1', sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES + 1 }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(false);
@@ -349,13 +349,13 @@ describe('Unit — checkAttachmentSize', () => {
     expect(result.affectedItems).toContain('a1');
   });
 
-  test('PASS: attachment size from fields.sizeBytes at limit', () => {
+  test('PASS: attachment size from fields.sizeBytes at limit', async () => {
     const items = [{ objectType: 'attachment', id: 'a2', fields: { sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES } }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(true);
   });
 
-  test('FAIL: attachment size from fields.sizeBytes over limit', () => {
+  test('FAIL: attachment size from fields.sizeBytes over limit', async () => {
     const items = [{ objectType: 'attachment', id: 'a2', fields: { sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES + 1 } }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(false);
@@ -366,7 +366,7 @@ describe('Unit — checkAttachmentSize', () => {
 describe('Unit — runValidationPipeline', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('PASS: all checks pass with empty db (simulation)', () => {
+  test('PASS: all checks pass with empty db (simulation)', async () => {
     const result = runValidationPipeline({
       restoreRequest: {},
       targetSiteId: 'site-a',
@@ -378,7 +378,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
-  test('blocking failure halts pipeline at check 1 (OAuth)', () => {
+  test('blocking failure halts pipeline at check 1 (OAuth)', async () => {
     // Seed a connection with expired token so check 1 fails
     seedConnection({ cloudId: 'site-a', accessTokenExpiresAt: new Date(Date.now() - 1000).toISOString() });
     const result = runValidationPipeline({
@@ -392,7 +392,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.blockingError.errorCode).toBe('OAUTH_TOKEN_INVALID');
   });
 
-  test('blocking failure at check 3 (archived project)', () => {
+  test('blocking failure at check 3 (archived project)', async () => {
     seedProject({ key: 'PROJ', cloudId: 'site-a', archived: true });
     const result = runValidationPipeline({
       restoreRequest: {},
@@ -405,7 +405,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.blockingError.errorCode).toBe('TARGET_PROJECT_ARCHIVED');
   });
 
-  test('non-blocking warning from workflow status names does not halt pipeline', () => {
+  test('non-blocking warning from workflow status names does not halt pipeline', async () => {
     const basketItems = [{
       objectType: 'workflow', id: 'wf1',
       fields: { statuses: [{ id: 's1', name: '' }] },
@@ -422,7 +422,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.warnings[0].errorCode).toBe('WORKFLOW_STATUS_NAME_MISSING');
   });
 
-  test('check 4 (Jira Software) skipped when no boards/sprints in basket', () => {
+  test('check 4 (Jira Software) skipped when no boards/sprints in basket', async () => {
     seedConnection({ cloudId: 'site-a', grantedScopes: [] }); // No board scope
     const result = runValidationPipeline({
       restoreRequest: {},
@@ -434,7 +434,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.passed).toBe(true);
   });
 
-  test('check 4 (Jira Software) blocking when boards in basket and scope missing', () => {
+  test('check 4 (Jira Software) blocking when boards in basket and scope missing', async () => {
     seedConnection({ cloudId: 'site-a', grantedScopes: ['read:jira-work'] });
     const result = runValidationPipeline({
       restoreRequest: {},
@@ -447,7 +447,7 @@ describe('Unit — runValidationPipeline', () => {
     expect(result.blockingError.errorCode).toBe('JIRA_SOFTWARE_NOT_ACTIVE');
   });
 
-  test('blocking failure at attachment size stops pipeline', () => {
+  test('blocking failure at attachment size stops pipeline', async () => {
     const basketItems = [{ objectType: 'attachment', id: 'a1', sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES + 1 }];
     const result = runValidationPipeline({
       restoreRequest: {},
@@ -466,7 +466,7 @@ describe('Unit — runValidationPipeline', () => {
 describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('ok status: empty field list maps to empty fieldMap', () => {
+  test('ok status: empty field list maps to empty fieldMap', async () => {
     const result = buildFieldMap({ sourceSiteId: 'site-a', targetSiteId: 'site-b', sourceFieldIds: [] });
     expect(result.status).toBe('ok');
     expect(result.fieldMap).toEqual({});
@@ -474,7 +474,7 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
     expect(result.missingOptional).toHaveLength(0);
   });
 
-  test('simulation: no definitions in db → self-maps all fields', () => {
+  test('simulation: no definitions in db → self-maps all fields', async () => {
     const result = buildFieldMap({
       sourceSiteId: 'site-a', targetSiteId: 'site-b',
       sourceFieldIds: ['customfield_10001', 'customfield_10002'],
@@ -484,7 +484,7 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
     expect(result.fieldMap['customfield_10002']).toBe('customfield_10002');
   });
 
-  test('full map: all source fields matched by name on target', () => {
+  test('full map: all source fields matched by name on target', async () => {
     db.customFieldDefinitions.set('site-a:customfield_10001', { cloudId: 'site-a', fieldId: 'customfield_10001', name: 'Sprint' });
     db.customFieldDefinitions.set('site-b:customfield_20001', { cloudId: 'site-b', fieldId: 'customfield_20001', name: 'Sprint' });
     const result = buildFieldMap({
@@ -497,7 +497,7 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
     expect(result.missingOptional).toHaveLength(0);
   });
 
-  test('blocked: missing required field on target', () => {
+  test('blocked: missing required field on target', async () => {
     // Source field defined, but no matching name on target
     db.customFieldDefinitions.set('site-a:customfield_10001', { cloudId: 'site-a', fieldId: 'customfield_10001', name: 'Sprint' });
     db.customFieldDefinitions.set('site-b:customfield_20002', { cloudId: 'site-b', fieldId: 'customfield_20002', name: 'Other' });
@@ -511,7 +511,7 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
     expect(result.missingOptional).toHaveLength(0);
   });
 
-  test('warn: missing optional field on target', () => {
+  test('warn: missing optional field on target', async () => {
     db.customFieldDefinitions.set('site-a:customfield_10001', { cloudId: 'site-a', fieldId: 'customfield_10001', name: 'Sprint' });
     db.customFieldDefinitions.set('site-b:customfield_20002', { cloudId: 'site-b', fieldId: 'customfield_20002', name: 'Other' });
     const result = buildFieldMap({
@@ -524,7 +524,7 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
     expect(result.missingRequired).toHaveLength(0);
   });
 
-  test('mixed: one required missing (blocked), one optional missing', () => {
+  test('mixed: one required missing (blocked), one optional missing', async () => {
     db.customFieldDefinitions.set('site-a:customfield_10001', { cloudId: 'site-a', fieldId: 'customfield_10001', name: 'Sprint' });
     db.customFieldDefinitions.set('site-a:customfield_10002', { cloudId: 'site-a', fieldId: 'customfield_10002', name: 'Story Points' });
     db.customFieldDefinitions.set('site-b:customfield_20003', { cloudId: 'site-b', fieldId: 'customfield_20003', name: 'Unrelated' });
@@ -542,39 +542,39 @@ describe('Unit — buildFieldMap (cross-site custom field mapping)', () => {
 // ─── UNIT: Conflict Mode Resolution ──────────────────────────────────────────
 
 describe('Unit — resolveConflictMode', () => {
-  test('skip mode unchanged for any basket size', () => {
+  test('skip mode unchanged for any basket size', async () => {
     const { conflictModeEffective } = resolveConflictMode('skip', 1000);
     expect(conflictModeEffective).toBe('skip');
   });
 
-  test('override mode unchanged for any basket size', () => {
+  test('override mode unchanged for any basket size', async () => {
     const { conflictModeEffective } = resolveConflictMode('override', 1000);
     expect(conflictModeEffective).toBe('override');
   });
 
-  test('ask mode active when basket exactly at threshold (50)', () => {
+  test('ask mode active when basket exactly at threshold (50)', async () => {
     const { conflictModeEffective, conflictModeDowngradeReason } = resolveConflictMode('ask', ASK_BASKET_THRESHOLD);
     expect(conflictModeEffective).toBe('ask');
     expect(conflictModeDowngradeReason).toBeUndefined();
   });
 
-  test('ask mode suppressed to skip when basket at 51', () => {
+  test('ask mode suppressed to skip when basket at 51', async () => {
     const { conflictModeEffective, conflictModeDowngradeReason } = resolveConflictMode('ask', ASK_BASKET_THRESHOLD + 1);
     expect(conflictModeEffective).toBe('skip');
     expect(conflictModeDowngradeReason).toBe('BASKET_SIZE_EXCEEDED');
   });
 
-  test('ask mode suppressed for large baskets', () => {
+  test('ask mode suppressed for large baskets', async () => {
     const { conflictModeEffective } = resolveConflictMode('ask', 200);
     expect(conflictModeEffective).toBe('skip');
   });
 
-  test('null conflictMode defaults to skip', () => {
+  test('null conflictMode defaults to skip', async () => {
     const { conflictModeEffective } = resolveConflictMode(null, 10);
     expect(conflictModeEffective).toBe('skip');
   });
 
-  test('undefined conflictMode defaults to skip', () => {
+  test('undefined conflictMode defaults to skip', async () => {
     const { conflictModeEffective } = resolveConflictMode(undefined, 10);
     expect(conflictModeEffective).toBe('skip');
   });
@@ -583,13 +583,13 @@ describe('Unit — resolveConflictMode', () => {
 // ─── UNIT: API Constraint Handlers ───────────────────────────────────────────
 
 describe('Unit — stampOriginalKeyLabel', () => {
-  test('adds original-key label to empty labels array', () => {
+  test('adds original-key label to empty labels array', async () => {
     const payload = { fields: {} };
     const result = stampOriginalKeyLabel(payload, 'PROJ-123');
     expect(result.fields.labels).toContain(`${ISSUE_KEY_LABEL_PREFIX}PROJ-123`);
   });
 
-  test('appends to existing labels without overwriting', () => {
+  test('appends to existing labels without overwriting', async () => {
     const payload = { fields: { labels: ['bug', 'urgent'] } };
     const result = stampOriginalKeyLabel(payload, 'PROJ-456');
     expect(result.fields.labels).toContain('bug');
@@ -597,21 +597,21 @@ describe('Unit — stampOriginalKeyLabel', () => {
     expect(result.fields.labels).toContain('original-key:PROJ-456');
   });
 
-  test('does not add duplicate label', () => {
+  test('does not add duplicate label', async () => {
     const payload = { fields: { labels: ['original-key:PROJ-789'] } };
     const result = stampOriginalKeyLabel(payload, 'PROJ-789');
     const count = result.fields.labels.filter(l => l === 'original-key:PROJ-789').length;
     expect(count).toBe(1);
   });
 
-  test('creates fields object if absent', () => {
+  test('creates fields object if absent', async () => {
     const payload = {};
     const result = stampOriginalKeyLabel(payload, 'PROJ-1');
     expect(result.fields).toBeDefined();
     expect(result.fields.labels).toContain('original-key:PROJ-1');
   });
 
-  test('label uses correct prefix format', () => {
+  test('label uses correct prefix format', async () => {
     const payload = { fields: {} };
     const result = stampOriginalKeyLabel(payload, 'MY-999');
     const label = result.fields.labels[0];
@@ -622,7 +622,7 @@ describe('Unit — stampOriginalKeyLabel', () => {
 describe('Unit — injectReporterAttributionHeader', () => {
   const sampleDoc = { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Original content' }] }] };
 
-  test('prepends reporter attribution as first ADF node', () => {
+  test('prepends reporter attribution as first ADF node', async () => {
     const reporter = { displayName: 'Alice Smith', emailAddress: 'alice@example.com' };
     const result = injectReporterAttributionHeader(sampleDoc, reporter);
     expect(result.content.length).toBe(2);
@@ -632,20 +632,20 @@ describe('Unit — injectReporterAttributionHeader', () => {
     expect(headerText).toContain('original reporter');
   });
 
-  test('original content is shifted to position 1 (not lost)', () => {
+  test('original content is shifted to position 1 (not lost)', async () => {
     const reporter = { displayName: 'Bob', emailAddress: 'bob@example.com' };
     const result = injectReporterAttributionHeader(sampleDoc, reporter);
     expect(result.content[1].content[0].text).toBe('Original content');
   });
 
-  test('preserves ADF version and type', () => {
+  test('preserves ADF version and type', async () => {
     const reporter = { displayName: 'Carol', emailAddress: 'carol@example.com' };
     const result = injectReporterAttributionHeader(sampleDoc, reporter);
     expect(result.version).toBe(1);
     expect(result.type).toBe('doc');
   });
 
-  test('handles empty content array', () => {
+  test('handles empty content array', async () => {
     const emptyDoc = { version: 1, type: 'doc', content: [] };
     const reporter = { displayName: 'Dave', emailAddress: 'dave@example.com' };
     const result = injectReporterAttributionHeader(emptyDoc, reporter);
@@ -657,7 +657,7 @@ describe('Unit — injectReporterAttributionHeader', () => {
 describe('Unit — prependCommentAuthorAdfHeader', () => {
   const sampleDoc = { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Comment body' }] }] };
 
-  test('prepends author ADF header as first node', () => {
+  test('prepends author ADF header as first node', async () => {
     const author = { displayName: 'Eve', accountId: 'acc-123' };
     const result = prependCommentAuthorAdfHeader(sampleDoc, author, '2026-01-01T00:00:00Z');
     expect(result.content.length).toBe(2);
@@ -667,19 +667,19 @@ describe('Unit — prependCommentAuthorAdfHeader', () => {
     expect(headerText).toContain('Original comment by');
   });
 
-  test('original comment body is preserved at position 1', () => {
+  test('original comment body is preserved at position 1', async () => {
     const author = { displayName: 'Frank', accountId: 'acc-456' };
     const result = prependCommentAuthorAdfHeader(sampleDoc, author, '2026-02-01T00:00:00Z');
     expect(result.content[1].content[0].text).toBe('Comment body');
   });
 
-  test('header node is type paragraph', () => {
+  test('header node is type paragraph', async () => {
     const author = { displayName: 'Grace', accountId: '' };
     const result = prependCommentAuthorAdfHeader(sampleDoc, author, '2026-03-01T00:00:00Z');
     expect(result.content[0].type).toBe('paragraph');
   });
 
-  test('author header becomes outermost when applied after reporter header', () => {
+  test('author header becomes outermost when applied after reporter header', async () => {
     // Simulate the orchestrator order: reporter first, then author (author ends up first)
     const baseDoc = { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'body' }] }] };
     const reporter = { displayName: 'Reporter', emailAddress: 'rep@example.com' };
@@ -696,13 +696,13 @@ describe('Unit — prependCommentAuthorAdfHeader', () => {
 });
 
 describe('Unit — buildWorkflowRestorePayload', () => {
-  test('returns full workflow definition when definition field exists', () => {
+  test('returns full workflow definition when definition field exists', async () => {
     const backup = { name: 'My Workflow', definition: { id: 'wf-1', statuses: [], transitions: [] } };
     const result = buildWorkflowRestorePayload(backup);
     expect(result).toEqual(backup.definition);
   });
 
-  test('throws WORKFLOW_DEFINITION_MISSING when definition is absent', () => {
+  test('throws WORKFLOW_DEFINITION_MISSING when definition is absent', async () => {
     expect(() => buildWorkflowRestorePayload({ name: 'No Def' })).toThrow();
     try {
       buildWorkflowRestorePayload({ name: 'No Def' });
@@ -711,11 +711,11 @@ describe('Unit — buildWorkflowRestorePayload', () => {
     }
   });
 
-  test('throws WORKFLOW_DEFINITION_MISSING when input is null', () => {
+  test('throws WORKFLOW_DEFINITION_MISSING when input is null', async () => {
     expect(() => buildWorkflowRestorePayload(null)).toThrow();
   });
 
-  test('throws WORKFLOW_DEFINITION_MISSING when input is undefined', () => {
+  test('throws WORKFLOW_DEFINITION_MISSING when input is undefined', async () => {
     expect(() => buildWorkflowRestorePayload(undefined)).toThrow();
   });
 });
@@ -725,7 +725,7 @@ describe('Unit — buildWorkflowRestorePayload', () => {
 describe('Unit — restore destination (original location matching)', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('original location: restore to matching project key', () => {
+  test('original location: restore to matching project key', async () => {
     const bp = 'bp-orig';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-1', { key: 'PROJ', name: 'My Project' });
 
@@ -734,7 +734,7 @@ describe('Unit — restore destination (original location matching)', () => {
       destination: { type: 'original', originalProjectKey: 'PROJ', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     expect(result.stageResults).toBeDefined();
@@ -743,7 +743,7 @@ describe('Unit — restore destination (original location matching)', () => {
     expect(stage2).toBeDefined();
   });
 
-  test('original location: project conflict skipped with skip mode', () => {
+  test('original location: project conflict skipped with skip mode', async () => {
     const bp = 'bp-orig-conflict';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-2', { key: 'PROJ', name: 'My Project' });
     // Seed an existing project at target to cause a conflict
@@ -754,7 +754,7 @@ describe('Unit — restore destination (original location matching)', () => {
       destination: { type: 'original', originalProjectKey: 'PROJ', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     const stage2 = result.stageResults.find(s => s.stageNumber === RESTORE_STAGE_ORDER.PROJECTS);
@@ -766,7 +766,7 @@ describe('Unit — restore destination (original location matching)', () => {
 describe('Unit — restore destination (alternate location)', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('alternate location: restore succeeds for different project key', () => {
+  test('alternate location: restore succeeds for different project key', async () => {
     const bp = 'bp-alt';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-3', { key: 'SOURCE', name: 'Source Proj' });
 
@@ -775,11 +775,11 @@ describe('Unit — restore destination (alternate location)', () => {
       destination: { type: 'alternate', targetProjectKey: 'TARGET', targetSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.status).toBe('complete');
   });
 
-  test('cross-site alternate: field mapping gate blocks when required field missing', () => {
+  test('cross-site alternate: field mapping gate blocks when required field missing', async () => {
     const bp = 'bp-crosssite';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-1', {
       key: 'SRC-1', summary: 'Test issue',
@@ -795,7 +795,7 @@ describe('Unit — restore destination (alternate location)', () => {
       destination: { type: 'alternate', targetProjectKey: 'DEST', targetSiteId: 'site-b', isCrossSite: true },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     // Since customfield_10001 is not marked required in the item, mapping uses warn not blocked
     // The pipeline returns field mapping warn and continues
     expect(result.__fieldMappingBlocked).toBeFalsy();
@@ -805,7 +805,7 @@ describe('Unit — restore destination (alternate location)', () => {
 describe('Unit — restore destination (JSON+ZIP export)', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('export destination: job completes with exportDownloadUrl', () => {
+  test('export destination: job completes with exportDownloadUrl', async () => {
     const bp = 'bp-export';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-exp', { key: 'EXP', name: 'Export Proj' });
     seedSnapshot(bp, 'JiraIssueNode', 'issue-exp-1', { key: 'EXP-1', summary: 'First issue' });
@@ -815,13 +815,13 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
       destination: { type: 'export', exportFormat: 'json+zip' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     expect(result.exportDownloadUrl).toBeDefined();
   });
 
-  test('export destination: archive stored in db with valid manifest', () => {
+  test('export destination: archive stored in db with valid manifest', async () => {
     const bp = 'bp-export2';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-e2', { key: 'EXP-2', summary: 'Second issue' });
     seedSnapshot(bp, 'JiraAttachmentNode', 'attach-e2', { filename: 'test.png', sizeBytes: 1024 });
@@ -831,7 +831,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
       destination: { type: 'export', exportFormat: 'json+zip' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     const archive = db.exportArchives.get(result.restoreJobId);
     expect(archive).toBeDefined();
@@ -846,7 +846,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
     expect(attachEntry.attachmentPath).toMatch(/attachments\//);
   });
 
-  test('export archive objects map contains valid Jira REST API v3 schema JSON', () => {
+  test('export archive objects map contains valid Jira REST API v3 schema JSON', async () => {
     const bp = 'bp-export3';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-e3', { key: 'EXP-3', summary: 'Schema test', issuetype: { name: 'Story' } });
 
@@ -854,7 +854,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
       backupPointId: bp,
       destination: { type: 'export', exportFormat: 'json+zip' },
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     const archive = db.exportArchives.get(result.restoreJobId);
 
     // objects should have at least one entry
@@ -868,7 +868,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
     expect(issuePayload.fields.labels).toContain('original-key:EXP-3');
   });
 
-  test('export attachment entries contain id, filename, path, sizeBytes', () => {
+  test('export attachment entries contain id, filename, path, sizeBytes', async () => {
     const bp = 'bp-export4';
     seedSnapshot(bp, 'JiraAttachmentNode', 'attach-4', { filename: 'doc.pdf', sizeBytes: 5000 });
 
@@ -876,7 +876,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
       backupPointId: bp,
       destination: { type: 'export', exportFormat: 'json+zip' },
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     const archive = db.exportArchives.get(result.restoreJobId);
 
     expect(archive.attachments.length).toBe(1);
@@ -893,7 +893,7 @@ describe('Unit — restore destination (JSON+ZIP export)', () => {
 describe('Unit — conflict mode Skip', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('Skip: conflicting workflow is skipped, non-conflicting issue succeeds', () => {
+  test('Skip: conflicting workflow is skipped, non-conflicting issue succeeds', async () => {
     const bp = 'bp-skip';
     // Workflow that conflicts (existing entry in db)
     seedSnapshot(bp, 'JiraWorkflowNode', 'wf-skip', { name: 'WF Skip', definition: { id: 'wf-skip', statuses: [], transitions: [] } });
@@ -906,7 +906,7 @@ describe('Unit — conflict mode Skip', () => {
       destination: { type: 'original', originalProjectKey: 'SKIP', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     // Stage 1 (workflows): the workflow should be skipped
     const stage1 = result.stageResults.find(s => s.stageNumber === RESTORE_STAGE_ORDER.WORKFLOWS_AND_CUSTOM_FIELDS);
@@ -923,7 +923,7 @@ describe('Unit — conflict mode Skip', () => {
 describe('Unit — conflict mode Override', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('Override: conflicting project is overridden (written to destination)', () => {
+  test('Override: conflicting project is overridden (written to destination)', async () => {
     const bp = 'bp-override';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-ov-1', { key: 'OV', name: 'Override Project' });
     seedProject({ key: 'OV', cloudId: 'site-a' }); // Causes conflict
@@ -933,7 +933,7 @@ describe('Unit — conflict mode Override', () => {
       destination: { type: 'original', originalProjectKey: 'OV', originalSiteId: 'site-a' },
       conflictMode: 'override',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     const stage2 = result.stageResults.find(s => s.stageNumber === RESTORE_STAGE_ORDER.PROJECTS);
     expect(stage2.succeeded).toBe(1);
     expect(stage2.skipped).toBe(0);
@@ -946,7 +946,7 @@ describe('Unit — conflict mode Override', () => {
 describe('Unit — conflict mode Ask', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('Ask: basket exactly at 50 → ask mode active, pending conflict created', () => {
+  test('Ask: basket exactly at 50 → ask mode active, pending conflict created', async () => {
     const bp = 'bp-ask-50';
     // Seed 50 issue snapshots
     for (let i = 0; i < 50; i++) {
@@ -961,7 +961,7 @@ describe('Unit — conflict mode Ask', () => {
       destination: { type: 'original', originalProjectKey: 'ASK', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     // Basket has 51 items (50 issues + 1 workflow) → ask suppressed → skip
     // Actually 50 issues + 1 workflow = 51 > threshold, so ask should be suppressed
     // But we want exactly 50 to test the threshold. Let's check our logic:
@@ -970,7 +970,7 @@ describe('Unit — conflict mode Ask', () => {
     expect(result.conflictModeDowngradeReason).toBe('BASKET_SIZE_EXCEEDED');
   });
 
-  test('Ask: basket exactly at 50 issues → ask mode active', () => {
+  test('Ask: basket exactly at 50 issues → ask mode active', async () => {
     const bp = 'bp-ask-exactly-50';
     for (let i = 0; i < 50; i++) {
       seedSnapshot(bp, 'JiraIssueNode', `issue-e50-${i}`, { key: `E50-${i}`, summary: `Issue ${i}` });
@@ -982,13 +982,13 @@ describe('Unit — conflict mode Ask', () => {
       destination: { type: 'original', originalProjectKey: 'E50', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     // Basket size = 50 → ask mode should be active (not suppressed)
     expect(result.conflictModeEffective).toBe('ask');
     expect(result.conflictModeDowngradeReason).toBeUndefined();
   });
 
-  test('Ask: basket at 51 items → ask suppressed to skip', () => {
+  test('Ask: basket at 51 items → ask suppressed to skip', async () => {
     const bp = 'bp-ask-51';
     for (let i = 0; i < 51; i++) {
       seedSnapshot(bp, 'JiraIssueNode', `issue-51-${i}`, { key: `F51-${i}`, summary: `Issue ${i}` });
@@ -999,12 +999,12 @@ describe('Unit — conflict mode Ask', () => {
       destination: { type: 'original', originalProjectKey: 'F51', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.conflictModeEffective).toBe('skip');
     expect(result.conflictModeDowngradeReason).toBe('BASKET_SIZE_EXCEEDED');
   });
 
-  test('Ask: conflicting workflow with small basket → pending conflict queued', () => {
+  test('Ask: conflicting workflow with small basket → pending conflict queued', async () => {
     const bp = 'bp-ask-pending';
     seedSnapshot(bp, 'JiraWorkflowNode', 'wf-pending', { name: 'WF Conflict', definition: { id: 'wf', statuses: [], transitions: [] } });
     db.workflowNodes.set('site-a:wf-pending', { name: 'WF Conflict', cloudId: 'site-a' });
@@ -1014,7 +1014,7 @@ describe('Unit — conflict mode Ask', () => {
       destination: { type: 'original', originalProjectKey: 'ASK2', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.conflictModeEffective).toBe('ask');
     const job = db.restoreJobs.get(result.restoreJobId);
     expect(job.pendingConflicts.length).toBe(1);
@@ -1027,7 +1027,7 @@ describe('Unit — conflict mode Ask', () => {
 describe('Integration — full five-stage pipeline', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('all five stages execute in dependency order with correct stage numbers', () => {
+  test('all five stages execute in dependency order with correct stage numbers', async () => {
     const bp = 'bp-e2e-full';
 
     // Stage 1: Workflow + CustomField
@@ -1049,7 +1049,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'E2E', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     expect(result.stageResults).toHaveLength(5);
@@ -1085,7 +1085,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(s5.succeeded + s5.failed).toBe(1); // Sprint depends on board in boardIdMap
   });
 
-  test('blocking validation failure halts pipeline with zero write calls', () => {
+  test('blocking validation failure halts pipeline with zero write calls', async () => {
     const bp = 'bp-e2e-halt';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-halt-1', { key: 'HALT-1', summary: 'Issue 1' });
     seedSnapshot(bp, 'JiraProjectNode', 'proj-halt', { key: 'HALT', name: 'Halt Project' });
@@ -1098,7 +1098,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'HALT', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     // Should return validation error with no stage results
     expect(result.__validationError).toBe(true);
@@ -1107,7 +1107,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(db.restoredObjects.size).toBe(0);
   });
 
-  test('conflict in stage 1 does not block stage 2 (with skip mode)', () => {
+  test('conflict in stage 1 does not block stage 2 (with skip mode)', async () => {
     const bp = 'bp-e2e-conflict-stage1';
     seedSnapshot(bp, 'JiraWorkflowNode', 'wf-conflict', { name: 'WF A', definition: { id: 'wf-a', statuses: [], transitions: [] } });
     // Existing workflow → conflict
@@ -1119,7 +1119,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'S2PROJ', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     const s1 = result.stageResults[0];
@@ -1129,7 +1129,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(s2.succeeded + s2.skipped).toBe(1);
   });
 
-  test('cross-site restore applies field mapping to issue fields', () => {
+  test('cross-site restore applies field mapping to issue fields', async () => {
     const bp = 'bp-e2e-crosssite';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-cs-1', {
       key: 'CS-1', summary: 'Cross-site issue',
@@ -1145,7 +1145,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'alternate', targetProjectKey: 'DEST', targetSiteId: 'site-b', isCrossSite: true },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.status).toBe('complete');
     // Check that the restored object has the mapped field key
@@ -1156,7 +1156,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(restoredIssue.payload.fields['customfield_10001']).toBeUndefined();
   });
 
-  test('API constraint: issue gets original-key label in full pipeline', () => {
+  test('API constraint: issue gets original-key label in full pipeline', async () => {
     const bp = 'bp-e2e-label';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-label-1', { key: 'LBL-1', summary: 'Label test' });
 
@@ -1165,14 +1165,14 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'LBL', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    initiateRestore(req);
+    await initiateRestore(req);
 
     const restoredIssue = Array.from(db.restoredObjects.values()).find(o => o.objectType === 'issue');
     expect(restoredIssue).toBeDefined();
     expect(restoredIssue.payload.fields.labels).toContain('original-key:LBL-1');
   });
 
-  test('API constraint: comment author ADF header prepended in full pipeline', () => {
+  test('API constraint: comment author ADF header prepended in full pipeline', async () => {
     const bp = 'bp-e2e-comment';
     seedSnapshot(bp, 'JiraCommentNode', 'comment-adf-1', {
       body: { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'comment text' }] }] },
@@ -1185,7 +1185,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'ADF', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    initiateRestore(req);
+    await initiateRestore(req);
 
     const restoredComment = Array.from(db.restoredObjects.values()).find(o => o.objectType === 'comment');
     expect(restoredComment).toBeDefined();
@@ -1193,7 +1193,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(body.content[0].content[0].text).toContain('TestAuthor');
   });
 
-  test('API constraint: full workflow definition supplied (not partial)', () => {
+  test('API constraint: full workflow definition supplied (not partial)', async () => {
     const bp = 'bp-e2e-wf-full';
     const fullDefinition = { id: 'wf-full', name: 'Full WF', statuses: [{ id: 's1', name: 'Open' }], transitions: [{ id: 't1', name: 'Start' }] };
     seedSnapshot(bp, 'JiraWorkflowNode', 'wf-full-1', { name: 'Full WF', definition: fullDefinition });
@@ -1203,7 +1203,7 @@ describe('Integration — full five-stage pipeline', () => {
       destination: { type: 'original', originalProjectKey: 'WF', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    initiateRestore(req);
+    await initiateRestore(req);
 
     const restoredWf = Array.from(db.restoredObjects.values()).find(o => o.objectType === 'workflow');
     expect(restoredWf).toBeDefined();
@@ -1219,7 +1219,7 @@ describe('Integration — full five-stage pipeline', () => {
 describe('Integration — JSON+ZIP export validation', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('export manifest contains all five object types', () => {
+  test('export manifest contains all five object types', async () => {
     const bp = 'bp-zip-full';
     seedSnapshot(bp, 'JiraWorkflowNode', 'wf-zip', { name: 'ZipWF', definition: { id: 'wf-zip', statuses: [], transitions: [] } });
     seedSnapshot(bp, 'JiraProjectNode', 'proj-zip', { key: 'ZIP', name: 'Zip Project' });
@@ -1232,7 +1232,7 @@ describe('Integration — JSON+ZIP export validation', () => {
       destination: { type: 'export', exportFormat: 'json+zip' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.status).toBe('complete');
 
     const archive = db.exportArchives.get(result.restoreJobId);
@@ -1244,7 +1244,7 @@ describe('Integration — JSON+ZIP export validation', () => {
     expect(types).toContain('board');
   });
 
-  test('export format is json+zip and exportFormat field set correctly', () => {
+  test('export format is json+zip and exportFormat field set correctly', async () => {
     const bp = 'bp-zip-format';
     seedSnapshot(bp, 'JiraProjectNode', 'proj-fmt', { key: 'FMT', name: 'Format Project' });
 
@@ -1252,7 +1252,7 @@ describe('Integration — JSON+ZIP export validation', () => {
       backupPointId: bp,
       destination: { type: 'export', exportFormat: 'json+zip' },
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     const archive = db.exportArchives.get(result.restoreJobId);
     expect(archive.exportFormat).toBe('json+zip');
   });
@@ -1273,7 +1273,7 @@ describe('Integration — POST /api/v1/restore/:id/conflict-decision', () => {
       destination: { type: 'original', originalProjectKey: 'DEC', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const initResult = initiateRestore(req);
+    const initResult = await initiateRestore(req);
     const restoreJobId = initResult.restoreJobId;
 
     const job = db.restoreJobs.get(restoreJobId);
@@ -1301,7 +1301,7 @@ describe('Integration — POST /api/v1/restore/:id/conflict-decision', () => {
       destination: { type: 'original', originalProjectKey: 'OV', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const initResult = initiateRestore(req);
+    const initResult = await initiateRestore(req);
 
     const res = await request(app)
       .post(`/api/v1/restore/${initResult.restoreJobId}/conflict-decision`)
@@ -1320,7 +1320,7 @@ describe('Integration — POST /api/v1/restore/:id/conflict-decision', () => {
       destination: { type: 'original', originalProjectKey: 'NP', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const initResult = initiateRestore(req);
+    const initResult = await initiateRestore(req);
 
     const res = await request(app)
       .post(`/api/v1/restore/${initResult.restoreJobId}/conflict-decision`)
@@ -1516,7 +1516,7 @@ describe('Integration — POST /api/v1/restore/validate', () => {
 describe('Edge Cases', () => {
   beforeEach(() => clearRestoreDb());
 
-  test('basket exactly at 50 items — Ask mode active and not suppressed', () => {
+  test('basket exactly at 50 items — Ask mode active and not suppressed', async () => {
     const bp = 'bp-edge-50';
     for (let i = 0; i < 50; i++) {
       seedSnapshot(bp, 'JiraIssueNode', `edge-50-issue-${i}`, { key: `EDGE-${i}`, summary: `Issue ${i}` });
@@ -1526,12 +1526,12 @@ describe('Edge Cases', () => {
       destination: { type: 'original', originalProjectKey: 'EDGE', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.conflictModeEffective).toBe('ask');
     expect(result.conflictModeDowngradeReason).toBeUndefined();
   });
 
-  test('basket at 51 items — Ask suppressed and Skip applied', () => {
+  test('basket at 51 items — Ask suppressed and Skip applied', async () => {
     const bp = 'bp-edge-51';
     for (let i = 0; i < 51; i++) {
       seedSnapshot(bp, 'JiraIssueNode', `edge-51-issue-${i}`, { key: `EDGE51-${i}`, summary: `Issue ${i}` });
@@ -1541,12 +1541,12 @@ describe('Edge Cases', () => {
       destination: { type: 'original', originalProjectKey: 'EDGE51', originalSiteId: 'site-a' },
       conflictMode: 'ask',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
     expect(result.conflictModeEffective).toBe('skip');
     expect(result.conflictModeDowngradeReason).toBe('BASKET_SIZE_EXCEEDED');
   });
 
-  test('blocking validation failure — pipeline halted with zero write calls issued', () => {
+  test('blocking validation failure — pipeline halted with zero write calls issued', async () => {
     const bp = 'bp-edge-block';
     // Add items to ensure there would be writes if not blocked
     seedSnapshot(bp, 'JiraProjectNode', 'proj-block', { key: 'BLK', name: 'Blocked' });
@@ -1561,7 +1561,7 @@ describe('Edge Cases', () => {
       destination: { type: 'original', originalProjectKey: 'BLK', originalSiteId: 'site-a' },
       conflictMode: 'skip',
     });
-    const result = initiateRestore(req);
+    const result = await initiateRestore(req);
 
     expect(result.__validationError).toBe(true);
     // Zero writes issued
@@ -1569,13 +1569,13 @@ describe('Edge Cases', () => {
     expect(db.restoreJobs.size).toBe(0);
   });
 
-  test('attachment at exactly 250 MB (262144000 bytes) — passes validation', () => {
+  test('attachment at exactly 250 MB (262144000 bytes) — passes validation', async () => {
     const items = [{ objectType: 'attachment', id: 'att-exact', sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(true);
   });
 
-  test('attachment at 250 MB + 1 byte (262144001 bytes) — fails with blocking error', () => {
+  test('attachment at 250 MB + 1 byte (262144001 bytes) — fails with blocking error', async () => {
     const items = [{ objectType: 'attachment', id: 'att-over', sizeBytes: ATTACHMENT_SIZE_LIMIT_BYTES + 1 }];
     const result = checkAttachmentSize(items);
     expect(result.passed).toBe(false);
@@ -1584,11 +1584,11 @@ describe('Edge Cases', () => {
     expect(result.affectedItems).toContain('att-over');
   });
 
-  test('ATTACHMENT_SIZE_LIMIT_BYTES is exactly 262144000 (250 MB)', () => {
+  test('ATTACHMENT_SIZE_LIMIT_BYTES is exactly 262144000 (250 MB)', async () => {
     expect(ATTACHMENT_SIZE_LIMIT_BYTES).toBe(262144000);
   });
 
-  test('ASK_BASKET_THRESHOLD is exactly 50', () => {
+  test('ASK_BASKET_THRESHOLD is exactly 50', async () => {
     expect(ASK_BASKET_THRESHOLD).toBe(50);
   });
 });
