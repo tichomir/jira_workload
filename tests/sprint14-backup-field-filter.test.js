@@ -116,6 +116,7 @@ function seedConnection(overrides = {}) {
     createdAt:           new Date().toISOString(),
     updatedAt:           new Date().toISOString(),
     lastSyncedAt:        null,
+    cloudIdVerifiedAt:   new Date().toISOString(),
     ...overrides,
   };
   db.connections.set(id, conn);

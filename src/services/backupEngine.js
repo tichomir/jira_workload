@@ -2,7 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { getValidAccessToken, createJiraAxiosInstance } = require('./tokenService');
+const { getValidAccessToken, createJiraAxiosInstance, verifyAndRefreshCloudId } = require('./tokenService');
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const { runJqlEnumeration } = require('./jqlEnumeration');
@@ -64,7 +64,10 @@ async function runIntegrationBackup(integrationId) {
     throw new Error(`Connection not found: ${integrationId}`);
   }
 
-  const { cloudId } = connection;
+  // CloudId freshness check: verify against Atlassian accessible-resources if not checked
+  // within the last 24 hours. This catches stale cloudIds (e.g. after site migration) before
+  // they cause mid-backup failures. The call is skipped when cloudIdVerifiedAt is recent.
+  const cloudId = await verifyAndRefreshCloudId(integrationId);
 
   // Proactive token check: refresh if expiring within 5 minutes.
   // createJiraAxiosInstance uses the fresh token and attaches a 401 interceptor

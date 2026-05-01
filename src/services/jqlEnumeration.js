@@ -2,6 +2,15 @@
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+// Lazy require to break the potential module-load cycle with tokenService
+// (tokenService → db; jqlEnumeration → tokenService is fine; no cycle).
+let _verifyAndRefreshCloudId = null;
+function getVerifyCloudId() {
+  if (!_verifyAndRefreshCloudId) {
+    _verifyAndRefreshCloudId = require('./tokenService').verifyAndRefreshCloudId;
+  }
+  return _verifyAndRefreshCloudId;
+}
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 const PAGE_SIZE = 100;
@@ -41,17 +50,41 @@ function buildJql(projectKey, lastBackupTimestamp) {
 
 /**
  * Fetch a single page of issues from the Jira search API.
+ * On a 410 Gone response, forces cloudId re-resolution via verifyAndRefreshCloudId and
+ * retries the request once with the fresh cloudId URL.
+ *
  * @param {string} cloudId
  * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @param {string} jql
  * @param {number} startAt
+ * @param {string} [connectionId]  Optional — enables the 410 re-resolution retry path
  * @returns {Promise<{issues: object[], total: number, startAt: number, maxResults: number}>}
  */
-async function fetchIssuePage(cloudId, jiraAxios, jql, startAt) {
-  const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/search`;
-  const response = await jiraAxios.get(url, {
-    params: { jql, startAt, maxResults: PAGE_SIZE },
-  });
+async function fetchIssuePage(cloudId, jiraAxios, jql, startAt, connectionId) {
+  const url = `${JIRA_API_BASE}/${cloudId}/rest/api/3/search/jql`;
+  let response;
+  try {
+    response = await jiraAxios.get(url, {
+      params: { jql, startAt, maxResults: PAGE_SIZE },
+    });
+  } catch (err) {
+    // 410 Gone: the cloudId URL may be stale. Force re-resolution once and retry.
+    if (err.response && err.response.status === 410 && connectionId) {
+      const conn = db.connections.get(connectionId);
+      if (conn) {
+        // Clear the freshness gate so verifyAndRefreshCloudId always calls accessible-resources.
+        conn.cloudIdVerifiedAt = null;
+        db.connections.set(connectionId, conn);
+      }
+      const freshCloudId = await getVerifyCloudId()(connectionId);
+      const retryUrl = `${JIRA_API_BASE}/${freshCloudId}/rest/api/3/search/jql`;
+      response = await jiraAxios.get(retryUrl, {
+        params: { jql, startAt, maxResults: PAGE_SIZE },
+      });
+      return response.data;
+    }
+    throw err;
+  }
   return response.data;
 }
 
@@ -69,7 +102,7 @@ async function paginateAllIssues(integrationId, cloudId, jiraAxios, jql) {
   let startAt = 0;
 
   while (true) {
-    const page = await fetchIssuePage(cloudId, jiraAxios, jql, startAt);
+    const page = await fetchIssuePage(cloudId, jiraAxios, jql, startAt, integrationId);
     const { issues = [], total, maxResults } = page;
 
     for (const issue of issues) {

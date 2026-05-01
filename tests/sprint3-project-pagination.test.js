@@ -52,6 +52,11 @@ jest.mock('../src/services/tokenService', () => {
       post: axiosMod.post,
     })),
     refreshConnectionToken: jest.fn().mockResolvedValue('mock-access-token-pagination'),
+    verifyAndRefreshCloudId: jest.fn().mockImplementation((connectionId) => {
+      const db = require('../src/db');
+      const conn = db.connections.get(connectionId);
+      return Promise.resolve(conn ? conn.cloudId : 'cloud-pagination-test');
+    }),
   };
 });
 
@@ -103,6 +108,7 @@ function seedConnection(overrides = {}) {
     createdAt:           new Date().toISOString(),
     updatedAt:           new Date().toISOString(),
     lastSyncedAt:        null,
+    cloudIdVerifiedAt:   new Date().toISOString(),
     ...overrides,
   };
   db.connections.set(id, conn);

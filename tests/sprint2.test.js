@@ -34,6 +34,11 @@ jest.mock('../src/services/tokenService', () => {
       post: axiosMod.post,
     })),
     refreshConnectionToken: jest.fn().mockResolvedValue('test-access-token'),
+    verifyAndRefreshCloudId: jest.fn().mockImplementation((connectionId) => {
+      const db = require('../src/db');
+      const conn = db.connections.get(connectionId);
+      return Promise.resolve(conn ? conn.cloudId : 'test-cloud-id');
+    }),
   };
 });
 

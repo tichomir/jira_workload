@@ -76,11 +76,16 @@ function seedConnection(overrides = {}) {
     id,
     cloudId: overrides.cloudId || 'cloud-e2e',
     siteId: overrides.siteId || 'site-e2e',
+    siteUrl: overrides.siteUrl || 'https://e2e-test.atlassian.net',
     accessToken: `enc:${overrides.accessToken || 'initial-access-token'}`,
     refreshToken: `enc:${overrides.refreshToken || 'refresh-token-abc'}`,
     accessTokenExpiresAt:
       overrides.accessTokenExpiresAt ||
       new Date(Date.now() + 3_600_000).toISOString(), // 1 hour
+    // Pre-verified cloudId so tests that don't cover cloudId verification skip the API call.
+    cloudIdVerifiedAt: overrides.cloudIdVerifiedAt !== undefined
+      ? overrides.cloudIdVerifiedAt
+      : new Date().toISOString(),
     grantedScopes: overrides.grantedScopes || [],     // no webhook scope by default
     deletedAt: null,
     status: overrides.status || 'active',

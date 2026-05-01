@@ -49,6 +49,19 @@
     <button class="banner-close" id="btn-dismiss-expiry" title="Dismiss">×</button>
   </div>
 
+  <!-- Site unavailable (CLOUD_ID_NOT_FOUND) banner -->
+  <div id="banner-cloud-id-not-found" class="banner banner-error hidden">
+    <span class="banner-icon">✖</span>
+    <div class="banner-body">
+      <div class="banner-title">Site Unavailable</div>
+      <div class="banner-msg">The Atlassian site associated with this connection could not be found. The site may have been renamed or deleted. Re-authenticate to reconnect.</div>
+      <div style="margin-top:8px">
+        <a href="/integrations/jira/connect" class="btn btn-sm btn-primary" id="btn-reauth-cloud-id">Re-authenticate</a>
+      </div>
+    </div>
+    <!-- No close button: persistent until re-authenticated -->
+  </div>
+
   <!-- Board scope degradation banner -->
   <div id="banner-board-degraded" class="banner banner-amber hidden">
     <span class="banner-icon">⚠</span>
@@ -325,10 +338,11 @@ function renderOverview(c) {
 
   const badge = qs('overview-status-badge');
   const statusMap = {
-    active:       ['badge-active',   '● Active'],
-    degraded:     ['badge-degraded', '● Degraded'],
-    expired:      ['badge-expired',  '● Expired'],
-    soft_deleted: ['badge-deleted',  '● Deleted'],
+    active:              ['badge-active',   '● Active'],
+    degraded:            ['badge-degraded', '● Degraded'],
+    expired:             ['badge-expired',  '● Expired'],
+    soft_deleted:        ['badge-deleted',  '● Deleted'],
+    CLOUD_ID_NOT_FOUND:  ['badge-expired',  '● Site Unavailable'],
   };
   const [cls, label] = statusMap[c.status] || ['badge-deleted', c.status];
   badge.className = `badge ${cls}`;
@@ -337,6 +351,9 @@ function renderOverview(c) {
 
 /* ── Token health banners ── */
 function renderTokenHealthBanners(connection, health) {
+  if (connection.status === 'CLOUD_ID_NOT_FOUND') {
+    show('banner-cloud-id-not-found');
+  }
   if (connection.status === 'expired' || (health && health.status === 'expired')) {
     show('banner-expired');
   }

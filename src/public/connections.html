@@ -124,10 +124,11 @@ function renderConnections() {
 
   const rows = _connections.map(c => {
     const statusMap = {
-      active:       ['badge-active',   '● Active'],
-      degraded:     ['badge-degraded', '● Degraded'],
-      expired:      ['badge-expired',  '● Expired'],
-      soft_deleted: ['badge-deleted',  '● Deleted'],
+      active:              ['badge-active',   '● Active'],
+      degraded:            ['badge-degraded', '● Degraded'],
+      expired:             ['badge-expired',  '● Expired'],
+      soft_deleted:        ['badge-deleted',  '● Deleted'],
+      CLOUD_ID_NOT_FOUND:  ['badge-expired',  '● Site Unavailable'],
     };
     const [cls, label] = statusMap[c.status] || ['badge-deleted', c.status];
     const name = escHtml(c.siteName || c.siteUrl || c.connectionId);

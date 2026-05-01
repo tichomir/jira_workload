@@ -19,9 +19,13 @@ const db = require('../db');
 const { decrypt, encrypt } = require('./crypto');
 
 const ATLASSIAN_TOKEN_URL = 'https://auth.atlassian.com/oauth/token';
+const ATLASSIAN_RESOURCES_URL = 'https://api.atlassian.com/oauth/token/accessible-resources';
 
 // Proactive buffer: refresh if token expires within 5 minutes.
 const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+// CloudId freshness window: re-verify against accessible-resources at most once per 24h.
+const CLOUD_ID_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 
 // In-flight refresh promises, keyed by connectionId.
 // Deduplicates concurrent 401 retries so only one token exchange fires per connection.
@@ -198,4 +202,81 @@ function createJiraAxiosInstance(connectionId, initialAccessToken) {
   return instance;
 }
 
-module.exports = { refreshConnectionToken, getValidAccessToken, createJiraAxiosInstance };
+// ---------------------------------------------------------------------------
+// verifyAndRefreshCloudId
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify the stored cloudId for a connection against Atlassian accessible-resources.
+ * Skips the network call if cloudIdVerifiedAt is within the last 24 hours.
+ *
+ * Side-effects:
+ *   - Updates connection.cloudId if accessible-resources returns a different id for the same site.
+ *   - Updates connection.cloudIdVerifiedAt on every successful verification.
+ *   - Sets connection.status = 'CLOUD_ID_NOT_FOUND' and throws if no matching site is found.
+ *
+ * @param {string} connectionId
+ * @returns {Promise<string>} The verified (and possibly updated) cloudId
+ */
+async function verifyAndRefreshCloudId(connectionId) {
+  const connection = db.connections.get(connectionId);
+  if (!connection) {
+    throw new Error(`Connection not found: ${connectionId}`);
+  }
+
+  // Freshness gate: skip the API call if verified within the last 24 hours.
+  if (connection.cloudIdVerifiedAt) {
+    const age = Date.now() - new Date(connection.cloudIdVerifiedAt).getTime();
+    if (age < CLOUD_ID_FRESHNESS_MS) {
+      return connection.cloudId;
+    }
+  }
+
+  // Re-resolve by calling accessible-resources with a valid access token.
+  const accessToken = await getValidAccessToken(connectionId);
+
+  let sites;
+  try {
+    const response = await axios.get(ATLASSIAN_RESOURCES_URL, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    });
+    sites = response.data;
+  } catch (err) {
+    throw new Error(`Failed to fetch accessible-resources for cloudId verification: ${err.message}`);
+  }
+
+  // Match by siteUrl (normalised) or by existing cloudId.
+  const storedUrl = (connection.siteUrl || '').replace(/\/$/, '').toLowerCase();
+  const matchingSite = (sites || []).find((s) => {
+    const resourceUrl = (s.url || '').replace(/\/$/, '').toLowerCase();
+    return resourceUrl === storedUrl || s.id === connection.cloudId;
+  });
+
+  const now = new Date().toISOString();
+
+  if (!matchingSite) {
+    connection.status = 'CLOUD_ID_NOT_FOUND';
+    connection.updatedAt = now;
+    db.connections.set(connectionId, connection);
+    db.saveDb();
+
+    const cloudIdErr = new Error(
+      `Atlassian site not found in accessible-resources for connection ${connectionId}. ` +
+      'The site may have been deleted or access may have been revoked. Please reconnect the integration.'
+    );
+    cloudIdErr.code = 'CLOUD_ID_NOT_FOUND';
+    cloudIdErr.connectionId = connectionId;
+    throw cloudIdErr;
+  }
+
+  // Persist refreshed cloudId (handles site-migration case) and update verified timestamp.
+  connection.cloudId = matchingSite.id;
+  connection.cloudIdVerifiedAt = now;
+  connection.updatedAt = now;
+  db.connections.set(connectionId, connection);
+  db.saveDb();
+
+  return matchingSite.id;
+}
+
+module.exports = { refreshConnectionToken, getValidAccessToken, createJiraAxiosInstance, verifyAndRefreshCloudId };
