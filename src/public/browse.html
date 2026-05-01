@@ -169,6 +169,57 @@
     .date-range-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     @media (max-width: 480px) { .date-range-row { grid-template-columns: 1fr; } }
 
+    /* Backup overview section styles */
+    .ov-section {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .ov-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--bg);
+      cursor: pointer;
+      user-select: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .ov-section-header:hover { background: var(--primary-light); }
+    .ov-section-left { display: flex; align-items: center; gap: 10px; }
+    .ov-section-count {
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 12px;
+      padding: 1px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 28px;
+      text-align: center;
+    }
+    .ov-section-chevron { transition: transform .2s; font-size: 12px; color: var(--text-muted); }
+    .ov-section-body { display: none; border-top: 1px solid var(--border); }
+    .ov-section-body.open { display: block; }
+    .ov-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .ov-item:last-child { border-bottom: none; }
+    .ov-item:hover { background: var(--primary-light); }
+    .ov-item-id { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--text-muted); min-width: 80px; }
+    .ov-item-name { flex: 1; color: var(--text); }
+    .ov-item-type { font-size: 11px; color: var(--text-muted); }
+
     /* Multi-select simulation using checkboxes */
     .multi-select-wrap {
       border: 2px solid var(--border); border-radius: var(--radius); padding: 6px 8px;
@@ -636,9 +687,40 @@
        PANEL: Object Explorer
        ════════════════════════════════════════════════════ -->
   <div role="tabpanel" id="panel-explorer" aria-labelledby="tab-explorer" class="tab-panel hidden">
+
+    <!-- ── Backup Overview (shown when arriving via deep-link with backupPointId) ── -->
+    <div id="oe-overview" class="hidden">
+      <div class="card mb-16">
+        <div class="card-title">Backup Contents</div>
+        <div class="card-subtitle" id="oe-overview-subtitle">All backed-up objects grouped by type.</div>
+
+        <!-- Loading -->
+        <div id="oe-ov-loading" class="loading hidden">
+          <div class="spinner"></div>
+          <span>Loading backup contents…</span>
+        </div>
+
+        <!-- Error -->
+        <div id="oe-ov-error" class="inline-error hidden" role="alert">
+          <span>⚠</span>
+          <span id="oe-ov-error-msg"></span>
+        </div>
+
+        <!-- Empty -->
+        <div id="oe-ov-empty" class="empty-state hidden" role="status">
+          <div class="empty-state-icon">📦</div>
+          <p>No backed-up objects found for this backup point.</p>
+        </div>
+
+        <!-- Grouped object type sections -->
+        <div id="oe-ov-sections" class="hidden" role="region" aria-label="Backed-up object types"></div>
+      </div>
+    </div>
+
+    <!-- ── Manual Object Explorer (always visible) ── -->
     <div class="card">
-      <div class="card-title">Object Explorer</div>
-      <div class="card-subtitle">Explore objects in a backup point and view change indicators (Added, Modified, Deleted, Unchanged).</div>
+      <div class="card-title">Object Explorer — Detailed View</div>
+      <div class="card-subtitle">Explore objects by type and view change indicators (Added, Modified, Deleted, Unchanged).</div>
 
       <div class="filter-grid mb-16">
         <div class="form-group" style="margin-bottom:0">
@@ -1404,6 +1486,120 @@ function resetExplorer() {
   qs('oe-results').innerHTML = '';
 }
 
+/* ════════════════════════════════════════════════════════════════
+   BACKUP OVERVIEW (summary by object type — used for deep-links)
+   ════════════════════════════════════════════════════════════════ */
+
+// OV_SECTIONS describes how to render each object type from the summary endpoint.
+// nameField: field inside item.fields to show as the display name (null = skip name)
+// The display ID is always item.id (snapshot primary key for that type).
+const OV_SECTIONS = [
+  { key: 'issues',       label: 'Issues',        nameField: 'summary' },
+  { key: 'projects',     label: 'Projects',       nameField: 'name'    },
+  { key: 'workflows',    label: 'Workflows',      nameField: 'name'    },
+  { key: 'customFields', label: 'Custom Fields',  nameField: 'name'    },
+];
+
+function toggleOvSection(sectionKey) {
+  const body = qs(`ov-body-${sectionKey}`);
+  const chevron = qs(`ov-chevron-${sectionKey}`);
+  if (!body) return;
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.classList.remove('open');
+    if (chevron) chevron.textContent = '▶';
+  } else {
+    body.classList.add('open');
+    if (chevron) chevron.textContent = '▼';
+  }
+}
+
+function renderOvSection(sectionDef, group) {
+  const { key, label, nameField } = sectionDef;
+  const count = group ? group.count : 0;
+  const items = group ? (group.items || []) : [];
+
+  const itemsHtml = items.length
+    ? items.map(item => {
+        const displayId = String(item.id || '');
+        const displayName = nameField ? (item.fields && item.fields[nameField]) || '' : '';
+        return `<div class="ov-item">
+          <span class="ov-item-id">${escHtml(displayId)}</span>
+          ${displayName ? `<span class="ov-item-name">${escHtml(String(displayName))}</span>` : ''}
+        </div>`;
+      }).join('')
+    : '<div class="ov-item"><span class="ov-item-name text-muted" style="font-style:italic">No items</span></div>';
+
+  return `
+    <div class="ov-section" id="ov-section-${escHtml(key)}">
+      <button
+        class="ov-section-header"
+        onclick="toggleOvSection('${escHtml(key)}')"
+        aria-expanded="true"
+        aria-controls="ov-body-${escHtml(key)}"
+        aria-label="${escHtml(label)} — ${count} items"
+      >
+        <span class="ov-section-left">
+          <span class="ov-section-count">${count}</span>
+          <span>${escHtml(label)}</span>
+        </span>
+        <span class="ov-section-chevron" id="ov-chevron-${escHtml(key)}">▼</span>
+      </button>
+      <div class="ov-section-body open" id="ov-body-${escHtml(key)}" role="list">
+        ${itemsHtml}
+      </div>
+    </div>`;
+}
+
+async function loadBackupOverview(backupPointId, connectionId) {
+  const ovEl = qs('oe-overview');
+  if (ovEl) ovEl.classList.remove('hidden');
+
+  hide('oe-ov-error');
+  hide('oe-ov-empty');
+  hide('oe-ov-sections');
+  show('oe-ov-loading');
+
+  const params = new URLSearchParams({ backupPointId });
+  if (connectionId) params.set('connectionId', connectionId);
+
+  try {
+    const res = await fetch(`/api/explorer/objects?${params}`);
+    const data = await res.json();
+
+    hide('oe-ov-loading');
+
+    if (!res.ok) {
+      qs('oe-ov-error-msg').textContent = data.message || 'Failed to load backup contents';
+      show('oe-ov-error');
+      return;
+    }
+
+    // Check if all groups are empty
+    const totalCount = OV_SECTIONS.reduce((sum, s) => sum + ((data[s.key] && data[s.key].count) || 0), 0);
+    if (totalCount === 0) {
+      show('oe-ov-empty');
+      return;
+    }
+
+    const sectionsEl = qs('oe-ov-sections');
+    sectionsEl.innerHTML = OV_SECTIONS
+      .map(def => renderOvSection(def, data[def.key]))
+      .join('');
+    show('oe-ov-sections');
+
+    // Update subtitle with backup point ID
+    const subtitle = qs('oe-overview-subtitle');
+    if (subtitle) {
+      subtitle.textContent = `Backup point: ${backupPointId}`;
+    }
+  } catch (err) {
+    hide('oe-ov-loading');
+    qs('oe-ov-error-msg').textContent = `Network error: ${err.message}`;
+    show('oe-ov-error');
+  }
+}
+
 /* ─── Bootstrap ────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', () => {
   loadShowUnchangedPref();
@@ -1443,16 +1639,21 @@ window.addEventListener('DOMContentLoaded', () => {
     const targetTab = (tab === 'explorer' || !tab) ? 'explorer' : tab;
     activateTab(targetTab);
 
-    // If landing on the explorer tab, auto-trigger the data load so the user
-    // doesn't have to manually press Explore.  Requires a node type — honour the
-    // URL param if supplied, otherwise default to JiraProjectNode.
+    // Load the backup overview (all object types grouped) — this is the primary
+    // view shown when arriving via deep-link from the All Backups list.
+    loadBackupOverview(bpId, connectionId);
+
+    // Also pre-populate the detailed explorer node-type select for manual drill-down.
     if (targetTab === 'explorer') {
       const nodeTypeSelect = qs('oe-node-type');
       if (nodeTypeSelect && !nodeTypeSelect.value) {
         const urlNodeType = urlParams.get('nodeType');
-        nodeTypeSelect.value = urlNodeType || 'JiraProjectNode';
+        if (urlNodeType) {
+          nodeTypeSelect.value = urlNodeType;
+          searchObjects();
+        }
+        // Don't auto-trigger searchObjects() without explicit nodeType — overview is shown instead.
       }
-      searchObjects();
     }
   }
 });

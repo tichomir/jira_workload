@@ -11,6 +11,7 @@ const { ensureWebhookRegistered, buildWebhookJqlFilter } = require('./webhookReg
 const { processAttachments } = require('./attachmentMaterialisation');
 const { runSiteEnumeration } = require('./siteObjectEnumeration');
 const { tagIssueNodes } = require('./archiveScope');
+const { saveManifest, computeContentHash } = require('./objectExplorerService');
 
 /**
  * Run a full backup for a single project within an integration.
@@ -209,6 +210,19 @@ async function runIntegrationBackup(integrationId, jobId) {
   db.backupPoints.set(backupPointId, backupPoint);
 
   // Populate objectSnapshots so the restore engine can build a basket from this backup point.
+  // JiraProjectNode snapshots — required for Object Explorer to browse projects when deep-linking.
+  for (const pr of projectResults) {
+    const nodeKey = `${integrationId}:${pr.projectKey}`;
+    const projectNode = db.projectNodes.get(nodeKey);
+    const projectData = projectNode || { key: pr.projectKey, integrationId };
+    db.objectSnapshots.set(`${backupPointId}:JiraProjectNode:${pr.projectKey}`, {
+      backupPointId,
+      nodeType: 'JiraProjectNode',
+      id: pr.projectKey,
+      fields: projectData,
+    });
+  }
+  // Also populate db.searchIssues so the Issue Search tab returns results.
   for (const pr of projectResults) {
     for (const issue of pr.issues || []) {
       const issueId = issue.id || issue.key;
@@ -218,6 +232,23 @@ async function runIntegrationBackup(integrationId, jobId) {
         id: issueId,
         fields: issue.fields || {},
         issueKey: issue.key,
+      });
+      db.searchIssues.set(`${backupPointId}:${issueId}`, {
+        id: issueId,
+        backupPointId,
+        key: issue.key,
+        summary: issue.fields?.summary || null,
+        issuetype: issue.fields?.issuetype?.name || null,
+        status: issue.fields?.status?.name || null,
+        statusCategory: issue.fields?.status?.statusCategory?.name || null,
+        priority: issue.fields?.priority?.name || null,
+        assignee: issue.fields?.assignee || null,
+        reporter: issue.fields?.reporter || null,
+        labels: issue.fields?.labels || [],
+        created: issue.fields?.created || null,
+        updated: issue.fields?.updated || null,
+        resolved: issue.fields?.resolutiondate || null,
+        projectKey: issue.fields?.project?.key || pr.projectKey,
       });
     }
   }
@@ -238,6 +269,36 @@ async function runIntegrationBackup(integrationId, jobId) {
       fields: field,
     });
   }
+
+  // Build and persist manifests so the Object Explorer diff engine can find entries.
+  const issueManifestEntries = [];
+  for (const pr of projectResults) {
+    for (const issue of pr.issues || []) {
+      const issueId = issue.id || issue.key;
+      issueManifestEntries.push({ id: issueId, contentHash: computeContentHash(issue.fields || {}) });
+    }
+  }
+  saveManifest(backupPointId, 'JiraIssueNode', issueManifestEntries);
+
+  const projectManifestEntries = projectResults.map(pr => {
+    const nodeKey = `${integrationId}:${pr.projectKey}`;
+    const projectNode = db.projectNodes.get(nodeKey);
+    const projectData = projectNode || { key: pr.projectKey, integrationId };
+    return { id: pr.projectKey, contentHash: computeContentHash(projectData) };
+  });
+  saveManifest(backupPointId, 'JiraProjectNode', projectManifestEntries);
+
+  const workflowManifestEntries = (siteEnumResult.workflows || []).map(wf => ({
+    id: wf.id || wf.name,
+    contentHash: computeContentHash(wf),
+  }));
+  saveManifest(backupPointId, 'JiraWorkflowNode', workflowManifestEntries);
+
+  const fieldManifestEntries = (siteEnumResult.fields || []).map(field => ({
+    id: field.id,
+    contentHash: computeContentHash(field),
+  }));
+  saveManifest(backupPointId, 'JiraCustomFieldDefinitionNode', fieldManifestEntries);
 
   updatePhase(PHASES.MANIFEST_WRITE);
   console.info(`[backup] phase=persisting integrationId=${integrationId}`);

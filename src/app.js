@@ -40,6 +40,9 @@ app.use('/api/v1/integrations', backupRouter);
 // Sprint 3 — Search and Object Explorer routes
 app.use('/api/v1/search', searchRouter);
 
+// Object Explorer summary endpoint: GET /api/explorer/objects
+app.use('/api/explorer', backupPointsRouter);
+
 // Sprint 4 — Restore Engine routes
 app.use('/api/v1/restore', restoreRouter);
 app.use('/api/v1/backup-points', backupPointsRouter);

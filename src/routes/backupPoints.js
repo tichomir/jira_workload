@@ -34,6 +34,59 @@ function errorResponse(res, status, code, message, fields) {
 const VALID_STATUS_CATEGORIES = new Set(['To Do', 'In Progress', 'Done']);
 
 // ---------------------------------------------------------------------------
+// GET /objects  (mounted at /api/explorer/objects)
+// Summary endpoint: returns all backed-up objects for a backup point, grouped
+// by type.  Accepts backupPointId (required) and connectionId (optional).
+// ---------------------------------------------------------------------------
+router.get('/objects', (req, res) => {
+  const { backupPointId, connectionId } = req.query;
+
+  if (!backupPointId) {
+    return errorResponse(res, 400, 'MISSING_BACKUP_POINT_ID', 'backupPointId is required');
+  }
+
+  const backupPoint = db.backupPoints.get(backupPointId);
+  if (!backupPoint) {
+    return errorResponse(res, 404, 'BACKUP_POINT_NOT_FOUND',
+      `Backup point ${backupPointId} not found`);
+  }
+
+  if (connectionId && backupPoint.integrationId !== connectionId) {
+    return errorResponse(res, 404, 'BACKUP_POINT_NOT_FOUND',
+      `Backup point ${backupPointId} not found for connection ${connectionId}`);
+  }
+
+  // Collect objects from objectSnapshots grouped by nodeType
+  const groups = {
+    JiraProjectNode:              { key: 'projects',     items: [] },
+    JiraIssueNode:                { key: 'issues',       items: [] },
+    JiraWorkflowNode:             { key: 'workflows',    items: [] },
+    JiraCustomFieldDefinitionNode:{ key: 'customFields', items: [] },
+  };
+
+  const prefix = `${backupPointId}:`;
+  for (const [snapshotKey, snapshot] of db.objectSnapshots.entries()) {
+    if (!snapshotKey.startsWith(prefix)) continue;
+    const group = groups[snapshot.nodeType];
+    if (!group) continue;
+    const item = { id: snapshot.id, nodeType: snapshot.nodeType, fields: snapshot.fields };
+    // Include issueKey for issues so the UI can display the human-readable key (e.g. TS-1)
+    if (snapshot.issueKey) item.issueKey = snapshot.issueKey;
+    group.items.push(item);
+  }
+
+  const result = {
+    backupPointId,
+    connectionId: backupPoint.integrationId,
+  };
+  for (const group of Object.values(groups)) {
+    result[group.key] = { count: group.items.length, items: group.items };
+  }
+
+  return res.status(200).json(result);
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/v1/backup-points
 // Global paginated list of all backup points across all integrations.
 // Query params: limit (default 20, max 100), cursor, connectionId (optional filter)

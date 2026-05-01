@@ -2970,3 +2970,23 @@ I would expect when when I see list of backups and clikc on one of them to be po
 - ✅ Fix: all-backups.html Browse button must pass connectionId or integrationId alongside backupPointId for browse.html to correctly scope the Object Explorer request — Frontend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 8 — Backup Browse Content Rendering | 2026-05-01 | ✅ done | 24 SP
+**Goal:** A bit better, I see list of backup. I see on of them having: 
+
+Issues: 3
+Projects: 1
+Workflows: 3
+Custom Fields: 56
+
+These backed up... but there is no way in the world tha tI can actually browse these. I clikc browse and I expect to start seeig objects etc... I soo nothing !
+
+**Delivered:**
+- ✅ Diagnose why Browse shows empty Object Explorer despite backed-up objects — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix backend Object Explorer API to correctly resolve and return objects for a given backupPointId — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix browse.html to render returned objects by type with expandable lists — Frontend Developer (◉ Deep, 5 SP)
+- ✅ QA: end-to-end Browse flow from Backups List to visible object inventory — Qa Engineer (⚡ Quick, 2 SP)
+- ✅ Fix: Call saveManifest() in backupEngine.js after writing objectSnapshots — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix: Store JiraProjectNode snapshots in objectSnapshots and include in manifest — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix: Populate db.searchIssues so Issue Search tab returns results — Software Architect (◈ Standard, 3 SP)
+
+---
