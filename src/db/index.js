@@ -156,6 +156,15 @@ const exportArchives = new Map();
 // Shape: { restoreJobId, objectType, id, targetId, fields, appliedConstraints }
 const restoredObjects = new Map();
 
+// ---------------------------------------------------------------------------
+// Sprint 25 — Atlassian API failure diagnostics (RCA store)
+// ---------------------------------------------------------------------------
+
+// AtlassianApiFailure records (keyed by failureId)
+// Shape: { id, connectionId, jobId, method, url, status, statusText, responseBody,
+//          requestPayloadSummary, tokenScopes, tokenExpiresAt, errorCode, recordedAt }
+const atlassianApiFailures = new Map();
+
 /**
  * Clean up expired state records (called lazily).
  */
@@ -211,6 +220,8 @@ const db = {
   backupJobs,
   // Sprint 15 — job progress tracking
   jobProgress,
+  // Sprint 25 — Atlassian API failure diagnostics
+  atlassianApiFailures,
 };
 
 // Load persisted state synchronously at module load time so all routes start

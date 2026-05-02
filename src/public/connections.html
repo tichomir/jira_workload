@@ -91,6 +91,19 @@ function showBanner(id, msg) {
 }
 function hideBanner(id) { qs(id).classList.add('hidden'); }
 
+// Session-dismissed warning helpers (global so inline onclick can call them)
+function getSessionDismissKey(connectionId, code) {
+  return `dismissed_warn:${connectionId}:${code}`;
+}
+function isWarningDismissed(connectionId, code) {
+  try { return sessionStorage.getItem(getSessionDismissKey(connectionId, code)) === '1'; } catch(_) { return false; }
+}
+function dismissWarning(connectionId, code) {
+  try { sessionStorage.setItem(getSessionDismissKey(connectionId, code), '1'); } catch(_) {}
+  const el = document.getElementById(`warn-${connectionId}-${code}`);
+  if (el) el.remove();
+}
+
 window.addEventListener('DOMContentLoaded', loadConnections);
 
 async function loadConnections() {
@@ -129,6 +142,7 @@ function renderConnections() {
       active:              ['badge-active',   '● Active'],
       degraded:            ['badge-degraded', '● Degraded'],
       expired:             ['badge-expired',  '● Expired'],
+      needs_reauth:        ['badge-expired',  '● Needs Reconnect'],
       soft_deleted:        ['badge-deleted',  '● Deleted'],
       CLOUD_ID_NOT_FOUND:  ['badge-expired',  '● Site Unavailable'],
     };
@@ -143,11 +157,50 @@ function renderConnections() {
       ? `<button class="btn btn-sm btn-secondary" onclick="reconnect('${escHtml(c.connectionId)}')" title="Re-run OAuth consent to refresh tokens or grant missing scopes">Reconnect</button>`
       : '';
 
+    // Build inline warning/error banners for this connection
+    let warningRows = '';
+
+    // Scope-missing warning (non-blocking, dismissible per session)
+    if (c.boardScopeDegraded && !isWarningDismissed(c.connectionId, 'BOARD_READ_SCOPE_MISSING')) {
+      warningRows += `<tr id="warn-${escHtml(c.connectionId)}-BOARD_READ_SCOPE_MISSING" style="background:var(--amber-bg,#fffbeb)">
+        <td colspan="5" style="padding:8px 16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:14px">⚠</span>
+            <span style="font-size:13px;color:var(--amber,#b45309);flex:1">
+              <strong>Board scope missing</strong> — The last backup skipped board/sprint data because
+              <code>read:board-scope:jira-software</code> was not granted.
+              <a href="#" onclick="event.preventDefault();reconnect('${escHtml(c.connectionId)}')" style="margin-left:6px;font-weight:600">Reconnect to grant board scope →</a>
+            </span>
+            <button onclick="dismissWarning('${escHtml(c.connectionId)}','BOARD_READ_SCOPE_MISSING')" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--amber,#b45309);padding:0 4px" title="Dismiss (until next backup)">×</button>
+          </div>
+        </td>
+      </tr>`;
+    }
+
+    // Auth-rejected error (genuine token rejection distinct from scope-missing)
+    if (c.boardAuthError && !isWarningDismissed(c.connectionId, 'AUTH_ERROR')) {
+      warningRows += `<tr id="warn-${escHtml(c.connectionId)}-AUTH_ERROR" style="background:var(--danger-bg,#fef2f2)">
+        <td colspan="5" style="padding:8px 16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:14px">✖</span>
+            <span style="font-size:13px;color:var(--danger,#dc2626);flex:1">
+              <strong>Authentication error during backup</strong> — Atlassian rejected both the
+              original and refreshed access token when fetching board data. The core backup completed
+              but board/sprint data was excluded.
+              <a href="#" onclick="event.preventDefault();reconnect('${escHtml(c.connectionId)}')" style="margin-left:6px;font-weight:600">Reconnect integration →</a>
+            </span>
+            <button onclick="dismissWarning('${escHtml(c.connectionId)}','AUTH_ERROR')" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--danger,#dc2626);padding:0 4px" title="Dismiss">×</button>
+          </div>
+        </td>
+      </tr>`;
+    }
+
     return `<tr>
       <td>
         <strong>${name}</strong>
         ${url ? `<div class="text-muted text-sm">${url}</div>` : ''}
-        ${c.boardScopeDegraded ? `<div style="margin-top:3px"><span style="font-size:10px;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:1px 6px;font-weight:600">Board scope missing</span></div>` : ''}
+        ${c.boardScopeDegraded ? `<div style="margin-top:3px"><span style="font-size:10px;background:var(--amber-bg,#fffbeb);color:var(--amber,#b45309);border-radius:3px;padding:1px 6px;font-weight:600">⚠ Board scope missing</span></div>` : ''}
+        ${c.boardAuthError && !c.boardScopeDegraded ? `<div style="margin-top:3px"><span style="font-size:10px;background:var(--danger-bg,#fef2f2);color:var(--danger,#dc2626);border-radius:3px;padding:1px 6px;font-weight:600">✖ Board auth error</span></div>` : ''}
       </td>
       <td><span class="badge ${cls}">${label}</span></td>
       <td class="text-muted text-sm">${fmtDate(c.connectedAt)}</td>
@@ -158,7 +211,7 @@ function renderConnections() {
         ${reconnectBtn}
         ${deleteBtn}
       </td>
-    </tr>`;
+    </tr>${warningRows}`;
   }).join('');
 
   body.innerHTML = `

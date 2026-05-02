@@ -176,10 +176,26 @@ async function runIntegrationBackup(integrationId, jobId) {
   console.info(`[backup] phase=site_enumeration integrationId=${integrationId}`);
   const siteEnumResult = await runSiteEnumeration(integrationId, cloudId, jiraAxios, jobId);
 
-  // Update lastSyncedAt on connection
+  // Update lastSyncedAt on connection and persist any board-phase warnings
   const now = new Date().toISOString();
   connection.lastSyncedAt = now;
   connection.updatedAt = now;
+
+  // Persist board enumeration warnings so the Connections UI can surface them
+  const boardWarnings = siteEnumResult.boardWarnings || [];
+  if (boardWarnings.length > 0) {
+    const hasScopeMissing = boardWarnings.some(w => w.code === 'BOARD_READ_SCOPE_MISSING');
+    const hasAuthError = boardWarnings.some(w => w.code === 'AUTH_ERROR');
+    connection.boardScopeDegraded = hasScopeMissing;
+    connection.boardAuthError = hasAuthError && !hasScopeMissing;
+    connection.lastBackupWarnings = boardWarnings.map(w => ({ ...w, recordedAt: now }));
+  } else {
+    // Clear stale warnings if backup succeeded without issues
+    connection.boardScopeDegraded = false;
+    connection.boardAuthError = false;
+    connection.lastBackupWarnings = [];
+  }
+
   db.connections.set(integrationId, connection);
 
   // Determine priorBackupPointId for this integration

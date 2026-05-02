@@ -12,11 +12,122 @@
  *     with the current Bearer token and a response interceptor that transparently
  *     refreshes and retries once on 401. Concurrent 401s are deduplicated via the
  *     same pending-refresh promise.
+ *   - logApiFailure(opts)                  — records 4xx diagnostic info to
+ *     db.atlassianApiFailures keyed by a new failureId; queryable post-hoc by jobId.
  */
 
+const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const db = require('../db');
 const { decrypt, encrypt } = require('./crypto');
+
+// ---------------------------------------------------------------------------
+// Diagnostic helpers
+// ---------------------------------------------------------------------------
+
+// Keys whose values must never appear in logs or stored failure records.
+const _REDACTED_KEYS = new Set([
+  'access_token', 'refresh_token', 'client_secret',
+  'Authorization', 'authorization',
+]);
+
+/**
+ * Deep-clone an object, replacing any sensitive key values with '[REDACTED]'.
+ * Safe to call on anything; non-objects are returned as-is.
+ */
+function _sanitize(value, depth = 0) {
+  if (depth > 5 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v) => _sanitize(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    out[k] = _REDACTED_KEYS.has(k) ? '[REDACTED]' : _sanitize(v, depth + 1);
+  }
+  return out;
+}
+
+/**
+ * Summarise a request payload for diagnostic logging.
+ * Extracts custom-field IDs + types from issue create/update payloads.
+ * Returns a plain object safe to log (no raw values, no token strings).
+ *
+ * @param {object} config  Axios request config
+ * @returns {object}
+ */
+function _summariseRequestPayload(config) {
+  const summary = {
+    method: (config.method || 'GET').toUpperCase(),
+    url: config.url,
+    params: config.params || null,
+  };
+  try {
+    const body = config.data
+      ? (typeof config.data === 'string' ? JSON.parse(config.data) : config.data)
+      : null;
+    if (body && body.fields) {
+      // Extract custom field IDs and types from issue write payloads.
+      const customFieldEntries = Object.entries(body.fields)
+        .filter(([k]) => k.startsWith('customfield_'))
+        .map(([k, v]) => ({
+          id: k,
+          valueType: Array.isArray(v) ? 'array' : v === null ? 'null' : typeof v,
+          hasId: v && typeof v === 'object' && !Array.isArray(v) && 'id' in v,
+        }));
+      summary.customFieldCount = customFieldEntries.length;
+      summary.customFields = customFieldEntries;
+      summary.coreFields = Object.keys(body.fields).filter((k) => !k.startsWith('customfield_'));
+    }
+  } catch (_) { /* body not JSON-parseable — skip */ }
+  return summary;
+}
+
+/**
+ * Record an Atlassian API 4xx failure to db.atlassianApiFailures for post-hoc RCA.
+ * Sensitive values (tokens, secrets) are redacted before storage or logging.
+ *
+ * @param {object} opts
+ * @param {string} opts.connectionId
+ * @param {string|null} [opts.jobId]
+ * @param {string} opts.method
+ * @param {string} opts.url
+ * @param {number} opts.status
+ * @param {string} [opts.statusText]
+ * @param {object|string|null} [opts.responseBody]  Raw Atlassian response body
+ * @param {object} [opts.requestPayloadSummary]     Pre-built summary from _summariseRequestPayload
+ * @param {string[]} [opts.tokenScopes]             Scopes from connection.grantedScopes
+ * @param {string|null} [opts.tokenExpiresAt]       ISO timestamp
+ * @param {string} opts.errorCode                   e.g. AUTH_REJECTED, SCOPE_MISSING, REFRESH_RACE
+ * @returns {object} The stored failure record
+ */
+function logApiFailure({ connectionId, jobId, method, url, status, statusText, responseBody, requestPayloadSummary, tokenScopes, tokenExpiresAt, errorCode }) {
+  const failureId = uuidv4();
+  const record = {
+    id: failureId,
+    connectionId,
+    jobId: jobId || null,
+    method: (method || 'GET').toUpperCase(),
+    url,
+    status,
+    statusText: statusText || null,
+    responseBody: _sanitize(responseBody) || null,
+    requestPayloadSummary: requestPayloadSummary || null,
+    tokenScopes: tokenScopes || null,
+    tokenExpiresAt: tokenExpiresAt || null,
+    errorCode,
+    recordedAt: new Date().toISOString(),
+  };
+  db.atlassianApiFailures.set(failureId, record);
+  console.warn(
+    `[apiDiag] ${errorCode} ${record.method} ${url} ` +
+    `status=${status} connectionId=${connectionId} ` +
+    `jobId=${jobId || 'n/a'} tokenExpiresAt=${tokenExpiresAt || 'unknown'} ` +
+    `scopes=${tokenScopes ? tokenScopes.join(',') : 'unknown'}`
+  );
+  return record;
+}
+
+// URL patterns for board/agile endpoints that require read:board-scope:jira-software.
+const _BOARD_URL_PATTERN = /\/rest\/agile\/1\.0\/board/;
+const _BOARD_READ_SCOPE = 'read:board-scope:jira-software';
 
 const ATLASSIAN_TOKEN_URL = 'https://auth.atlassian.com/oauth/token';
 const ATLASSIAN_RESOURCES_URL = 'https://api.atlassian.com/oauth/token/accessible-resources';
@@ -190,15 +301,67 @@ function createJiraAxiosInstance(connectionId, initialAccessToken, jobId = null)
     null,
     async (error) => {
       const config = error.config;
-      if (error.response && error.response.status === 401) {
+      const status = error.response && error.response.status;
+
+      if (!status) throw error; // network error — no HTTP status
+
+      const connection = db.connections.get(connectionId);
+      const tokenScopes = connection && connection.grantedScopes ? connection.grantedScopes : null;
+      const tokenExpiresAt = connection && connection.accessTokenExpiresAt ? connection.accessTokenExpiresAt : null;
+      const requestPayloadSummary = _summariseRequestPayload(config);
+      const isBoardUrl = _BOARD_URL_PATTERN.test(config.url || '');
+
+      if (status === 401) {
         if (!config._retried) {
           config._retried = true;
           // refreshConnectionToken is deduplicated — concurrent 401s share one exchange.
-          const newToken = await refreshConnectionToken(connectionId);
+          let newToken;
+          try {
+            newToken = await refreshConnectionToken(connectionId);
+          } catch (refreshErr) {
+            if (refreshErr.code === 'AUTH_ERROR') {
+              logApiFailure({
+                connectionId, jobId, method: config.method, url: config.url,
+                status, statusText: error.response.statusText,
+                responseBody: error.response.data,
+                requestPayloadSummary, tokenScopes, tokenExpiresAt,
+                errorCode: 'AUTH_REJECTED',
+              });
+            }
+            throw refreshErr;
+          }
           config.headers['Authorization'] = `Bearer ${newToken}`;
+          // Update instance default so subsequent requests on this instance use the new token.
+          instance.defaults.headers['Authorization'] = `Bearer ${newToken}`;
           return instance(config);
         }
-        // Retry also returned 401 — token is permanently invalid; surface AUTH_ERROR.
+
+        // Retry also returned 401. Determine whether this is a scope gap (board URLs) or genuine rejection.
+        const hasBoardReadScope = tokenScopes && tokenScopes.includes(_BOARD_READ_SCOPE);
+        if (isBoardUrl && !hasBoardReadScope) {
+          logApiFailure({
+            connectionId, jobId, method: config.method, url: config.url,
+            status, statusText: error.response && error.response.statusText,
+            responseBody: error.response && error.response.data,
+            requestPayloadSummary, tokenScopes, tokenExpiresAt,
+            errorCode: 'BOARD_READ_SCOPE_MISSING',
+          });
+          const scopeErr = new Error(
+            `The Atlassian integration is missing the ${_BOARD_READ_SCOPE} scope required to access board/sprint data. ` +
+            'Please reconnect the integration to grant the board read scope.'
+          );
+          scopeErr.code = 'BOARD_READ_SCOPE_MISSING';
+          scopeErr.connectionId = connectionId;
+          throw scopeErr;
+        }
+
+        logApiFailure({
+          connectionId, jobId, method: config.method, url: config.url,
+          status, statusText: error.response && error.response.statusText,
+          responseBody: error.response && error.response.data,
+          requestPayloadSummary, tokenScopes, tokenExpiresAt,
+          errorCode: 'AUTH_REJECTED',
+        });
         const authErr = new Error(
           'Atlassian rejected both the original and refreshed access token. ' +
           'Please reconnect the integration from the Connections page.'
@@ -207,6 +370,34 @@ function createJiraAxiosInstance(connectionId, initialAccessToken, jobId = null)
         authErr.connectionId = connectionId;
         throw authErr;
       }
+
+      if (status === 403) {
+        logApiFailure({
+          connectionId, jobId, method: config.method, url: config.url,
+          status, statusText: error.response.statusText,
+          responseBody: error.response.data,
+          requestPayloadSummary, tokenScopes, tokenExpiresAt,
+          errorCode: 'SCOPE_MISSING',
+        });
+        const scopeErr = new Error(
+          `Atlassian returned 403 Forbidden — the integration may be missing a required scope. ` +
+          `URL: ${config.url}`
+        );
+        scopeErr.code = 'SCOPE_MISSING';
+        scopeErr.connectionId = connectionId;
+        throw scopeErr;
+      }
+
+      if (status >= 400 && status < 500) {
+        logApiFailure({
+          connectionId, jobId, method: config.method, url: config.url,
+          status, statusText: error.response.statusText,
+          responseBody: error.response.data,
+          requestPayloadSummary, tokenScopes, tokenExpiresAt,
+          errorCode: `API_ERROR_${status}`,
+        });
+      }
+
       throw error;
     }
   );
@@ -292,4 +483,4 @@ async function verifyAndRefreshCloudId(connectionId) {
   return matchingSite.id;
 }
 
-module.exports = { refreshConnectionToken, getValidAccessToken, createJiraAxiosInstance, verifyAndRefreshCloudId };
+module.exports = { refreshConnectionToken, getValidAccessToken, createJiraAxiosInstance, verifyAndRefreshCloudId, logApiFailure };

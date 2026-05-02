@@ -63,6 +63,8 @@ router.get('/', (req, res) => {
       siteUrl: conn.siteUrl,
       status: conn.status,
       boardScopeDegraded: conn.boardScopeDegraded || false,
+      boardAuthError: conn.boardAuthError || false,
+      lastBackupWarnings: conn.lastBackupWarnings || [],
       connectedAt: conn.connectedAt,
       lastSyncedAt: conn.lastSyncedAt || null,
       connectionPath: conn.connectionPath,

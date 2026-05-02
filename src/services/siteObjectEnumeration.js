@@ -211,6 +211,7 @@ async function enumerateBoards(integrationId, cloudId, jiraAxios) {
   console.info(`[siteEnum] boards enumerated: count=${boards.length}`);
 
   const allSprints = [];
+  const warnings = [];
 
   for (const board of boards) {
     // Fetch board configuration to capture filterJql and columnConfig
@@ -220,7 +221,15 @@ async function enumerateBoards(integrationId, cloudId, jiraAxios) {
       const configResp = await jiraAxios.get(configUrl);
       config = configResp.data || {};
     } catch (err) {
-      console.debug(`[siteEnum] board config fetch skipped for boardId=${board.id}: ${err.message}`);
+      if (err.code === 'BOARD_READ_SCOPE_MISSING') {
+        console.warn(`[siteEnum] BOARD_READ_SCOPE_MISSING: board config skipped for boardId=${board.id} — grant read:board-scope:jira-software to include board configuration`);
+        warnings.push({ code: 'BOARD_READ_SCOPE_MISSING', scope: 'read:board-scope:jira-software', boardId: board.id, phase: 'board_config' });
+      } else if (err.code === 'AUTH_ERROR') {
+        console.warn(`[siteEnum] AUTH_ERROR: board config fetch failed for boardId=${board.id}: ${err.message}`);
+        warnings.push({ code: 'AUTH_ERROR', boardId: board.id, phase: 'board_config', message: err.message });
+      } else {
+        console.debug(`[siteEnum] board config fetch skipped for boardId=${board.id}: ${err.message}`);
+      }
     }
 
     const nodeKey = `${cloudId}:${board.id}`;
@@ -261,13 +270,21 @@ async function enumerateBoards(integrationId, cloudId, jiraAxios) {
           allSprints.push({ ...sprint, originBoardId: board.id });
         }
       } catch (err) {
-        console.debug(`[siteEnum] sprint enumeration skipped for boardId=${board.id}: ${err.message}`);
+        if (err.code === 'BOARD_READ_SCOPE_MISSING') {
+          console.warn(`[siteEnum] BOARD_READ_SCOPE_MISSING: sprint enumeration skipped for boardId=${board.id} — grant read:board-scope:jira-software to include sprint data`);
+          warnings.push({ code: 'BOARD_READ_SCOPE_MISSING', scope: 'read:board-scope:jira-software', boardId: board.id, phase: 'sprint_enum' });
+        } else if (err.code === 'AUTH_ERROR') {
+          console.warn(`[siteEnum] AUTH_ERROR: sprint enumeration failed for boardId=${board.id}: ${err.message}`);
+          warnings.push({ code: 'AUTH_ERROR', boardId: board.id, phase: 'sprint_enum', message: err.message });
+        } else {
+          console.debug(`[siteEnum] sprint enumeration skipped for boardId=${board.id}: ${err.message}`);
+        }
       }
     }
   }
 
   console.info(`[siteEnum] sprints enumerated: count=${allSprints.length}`);
-  return { boards, sprints: allSprints };
+  return { boards, sprints: allSprints, warnings };
 }
 
 /**
@@ -309,15 +326,25 @@ async function runSiteEnumeration(integrationId, cloudId, jiraAxios, jobId = nul
   // Step 4: board and sprint enumeration (non-blocking — requires read:board-scope)
   let boards = [];
   let sprints = [];
+  let boardWarnings = [];
   try {
     const boardResult = await enumerateBoards(integrationId, cloudId, jiraAxios);
     boards = boardResult.boards;
     sprints = boardResult.sprints;
+    boardWarnings = boardResult.warnings || [];
   } catch (err) {
-    console.warn(`[siteEnum] Board/sprint enumeration failed (non-fatal): ${err.message}`);
+    if (err.code === 'BOARD_READ_SCOPE_MISSING') {
+      console.warn(`[siteEnum] BOARD_READ_SCOPE_MISSING: board/sprint enumeration skipped — grant read:board-scope:jira-software to include board and sprint data`);
+      boardWarnings.push({ code: 'BOARD_READ_SCOPE_MISSING', scope: 'read:board-scope:jira-software', phase: 'board_enum' });
+    } else if (err.code === 'AUTH_ERROR') {
+      console.warn(`[siteEnum] AUTH_ERROR: board/sprint enumeration failed: ${err.message}`);
+      boardWarnings.push({ code: 'AUTH_ERROR', phase: 'board_enum', message: err.message });
+    } else {
+      console.warn(`[siteEnum] Board/sprint enumeration failed (non-fatal): ${err.message}`);
+    }
   }
 
-  return { workflows, fields, contextNodes: allContextNodes, boards, sprints };
+  return { workflows, fields, contextNodes: allContextNodes, boards, sprints, boardWarnings };
 }
 
 module.exports = {
