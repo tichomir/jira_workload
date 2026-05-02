@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { PHASES, emitProgress } = require('./jobProgress');
@@ -33,17 +35,36 @@ function computeChecksum(buffer) {
 }
 
 /**
- * Simulate uploading a binary to object storage.
- * In production, replace with actual S3/blob storage upload.
- * Returns a storage reference string.
+ * Persist a binary attachment to local disk.
+ * Returns a storage reference string (relative path).
  * @param {string} integrationId
  * @param {string} attachmentId
  * @param {Buffer} binary
  * @returns {string}
  */
 function uploadBinaryToStorage(integrationId, attachmentId, binary) {
-  // In production: upload to S3/blob and return the key/URI
-  return `integrations/${integrationId}/attachments/${attachmentId}`;
+  const storageRef = `integrations/${integrationId}/attachments/${attachmentId}`;
+  const fullPath = path.join(db.getDataDir(), 'backups', integrationId, 'attachments', attachmentId);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  fs.writeFileSync(fullPath, binary);
+  return storageRef;
+}
+
+/**
+ * Read a previously stored attachment binary from disk.
+ * @param {string} binaryStorageRef  e.g. "integrations/{id}/attachments/{attachmentId}"
+ * @returns {Buffer|null}
+ */
+function downloadBinaryFromStorage(binaryStorageRef) {
+  // binaryStorageRef format: "integrations/{integrationId}/attachments/{attachmentId}"
+  const parts = binaryStorageRef.split('/');
+  // parts: ['integrations', integrationId, 'attachments', attachmentId]
+  if (parts.length < 4) return null;
+  const integrationId = parts[1];
+  const attachmentId = parts[3];
+  const fullPath = path.join(db.getDataDir(), 'backups', integrationId, 'attachments', attachmentId);
+  if (!fs.existsSync(fullPath)) return null;
+  return fs.readFileSync(fullPath);
 }
 
 /**
@@ -186,6 +207,7 @@ module.exports = {
   downloadAttachmentBinary,
   computeChecksum,
   uploadBinaryToStorage,
+  downloadBinaryFromStorage,
   findPriorManifestEntry,
   processAttachments,
   getManifestForIntegration,

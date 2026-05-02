@@ -649,7 +649,7 @@ describe('Site-Level Object Enumeration', () => {
       .mockResolvedValueOnce({ data: [{ id: 'customfield_1', name: 'CF1', schema: { type: 'number' } }] }) // fields
       .mockResolvedValueOnce({ data: { values: [], isLast: true } }); // contexts for CF1
 
-    const result = await runSiteEnumeration('cloud-abc', makeMockJiraAxios());
+    const result = await runSiteEnumeration('test-integration', 'cloud-abc', makeMockJiraAxios());
 
     expect(result.workflows).toHaveLength(1);
     expect(result.fields).toHaveLength(1);
@@ -1275,7 +1275,7 @@ describe('AC: Site-Level Enumeration runs even with empty project scope', () => 
       // Contexts for cf-1
       .mockResolvedValueOnce({ data: { values: [], isLast: true } });
 
-    const result = await runSiteEnumeration('cloud-empty', makeMockJiraAxios());
+    const result = await runSiteEnumeration('test-integration', 'cloud-empty', makeMockJiraAxios());
 
     expect(result.workflows).toHaveLength(1);
     expect(result.fields).toHaveLength(1);

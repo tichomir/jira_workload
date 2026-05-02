@@ -475,6 +475,9 @@ router.get('/:id/restore-backup/:jobId', (req, res) => {
     resp.failedCount = job.result.failedCount || 0;
     resp.byType = job.result.byType || {};
     resp.conflictModeEffective = job.result.conflictModeEffective;
+    if (job.result.stageResults && job.result.stageResults.length > 0) {
+      resp.stageResults = job.result.stageResults;
+    }
     if (job.result.errors && job.result.errors.length > 0) {
       resp.errors = job.result.errors;
     }

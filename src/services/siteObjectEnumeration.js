@@ -4,10 +4,13 @@ const db = require('../db');
 const { PHASES, emitProgress } = require('./jobProgress');
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
+const AGILE_API_BASE = 'https://api.atlassian.com/ex/jira';
 const WORKFLOW_PAGE_SIZE = 50;
 const CONTEXT_PAGE_SIZE = 50;
 const OPTIONS_PAGE_SIZE = 100;
 const CONTEXT_OPTIONS_CONCURRENCY = 5;
+const BOARD_PAGE_SIZE = 50;
+const SPRINT_PAGE_SIZE = 50;
 
 // Field types that have option enumerations
 const OPTION_FIELD_TYPES = new Set(['select', 'multiselect', 'radiobuttons', 'checkboxes']);
@@ -157,14 +160,126 @@ async function enumerateCustomFieldContexts(cloudId, jiraAxios, fieldId, fieldTy
 }
 
 /**
+ * Paginate a Jira Agile API endpoint that uses { values, isLast } or { values, total } pagination.
+ * @param {string} url
+ * @param {import('axios').AxiosInstance} jiraAxios
+ * @param {number} pageSize
+ * @param {object} extraParams
+ * @returns {Promise<object[]>}
+ */
+async function paginateAgile(url, jiraAxios, pageSize, extraParams = {}) {
+  const allValues = [];
+  let startAt = 0;
+
+  while (true) {
+    let response;
+    try {
+      response = await jiraAxios.get(url, {
+        params: { startAt, maxResults: pageSize, ...extraParams },
+      });
+    } catch (err) {
+      if (err.isAxiosError && err.response && (err.response.status === 404 || err.response.status === 400)) {
+        console.debug(`[siteEnum] Agile pagination skipped for ${url}: ${err.response.status}`);
+        return allValues;
+      }
+      throw err;
+    }
+    const data = response.data || {};
+    const values = data.values || [];
+    allValues.push(...values);
+    startAt += values.length || pageSize;
+    if (data.isLast || values.length === 0) break;
+    // total-based termination fallback
+    if (typeof data.total === 'number' && allValues.length >= data.total) break;
+  }
+
+  return allValues;
+}
+
+/**
+ * Enumerate all JiraBoardNode and JiraSprintNode objects for an integration.
+ * GET /rest/agile/1.0/board — paginated; then for scrum boards GET /rest/agile/1.0/board/{id}/sprint
+ * @param {string} integrationId
+ * @param {string} cloudId
+ * @param {import('axios').AxiosInstance} jiraAxios
+ * @returns {Promise<{boards: object[], sprints: object[]}>}
+ */
+async function enumerateBoards(integrationId, cloudId, jiraAxios) {
+  console.info(`[siteEnum] enumerating boards for cloudId=${cloudId}`);
+  const boardUrl = `${AGILE_API_BASE}/${cloudId}/rest/agile/1.0/board`;
+  const boards = await paginateAgile(boardUrl, jiraAxios, BOARD_PAGE_SIZE);
+  console.info(`[siteEnum] boards enumerated: count=${boards.length}`);
+
+  const allSprints = [];
+
+  for (const board of boards) {
+    // Fetch board configuration to capture filterJql and columnConfig
+    let config = {};
+    try {
+      const configUrl = `${AGILE_API_BASE}/${cloudId}/rest/agile/1.0/board/${board.id}/configuration`;
+      const configResp = await jiraAxios.get(configUrl);
+      config = configResp.data || {};
+    } catch (err) {
+      console.debug(`[siteEnum] board config fetch skipped for boardId=${board.id}: ${err.message}`);
+    }
+
+    const nodeKey = `${cloudId}:${board.id}`;
+    db.sprintNodes.set(nodeKey, {
+      cloudId,
+      integrationId,
+      boardId: board.id,
+      name: board.name,
+      type: board.type,
+      projectKey: (board.location && board.location.projectKey) || null,
+      filterJql: config.filter && config.filter.query || null,
+      columnConfig: config.columnConfig || null,
+      raw: board,
+      upsertedAt: new Date().toISOString(),
+    });
+
+    // Only scrum boards have sprints
+    if (board.type === 'scrum') {
+      try {
+        const sprintUrl = `${AGILE_API_BASE}/${cloudId}/rest/agile/1.0/board/${board.id}/sprint`;
+        const sprints = await paginateAgile(sprintUrl, jiraAxios, SPRINT_PAGE_SIZE);
+        for (const sprint of sprints) {
+          const sprintNodeKey = `${cloudId}:sprint:${sprint.id}`;
+          db.sprintNodes.set(sprintNodeKey, {
+            cloudId,
+            integrationId,
+            sprintId: sprint.id,
+            boardId: board.id,
+            name: sprint.name,
+            state: sprint.state,
+            startDate: sprint.startDate || null,
+            endDate: sprint.endDate || null,
+            completeDate: sprint.completeDate || null,
+            goal: sprint.goal || null,
+            raw: sprint,
+            upsertedAt: new Date().toISOString(),
+          });
+          allSprints.push({ ...sprint, originBoardId: board.id });
+        }
+      } catch (err) {
+        console.debug(`[siteEnum] sprint enumeration skipped for boardId=${board.id}: ${err.message}`);
+      }
+    }
+  }
+
+  console.info(`[siteEnum] sprints enumerated: count=${allSprints.length}`);
+  return { boards, sprints: allSprints };
+}
+
+/**
  * Run the full site-level object enumeration for a cloudId.
- * Order: workflows + custom fields (concurrent), then contexts (gated on fields).
+ * Order: workflows + custom fields (concurrent), then contexts (gated on fields), then boards+sprints.
+ * @param {string} integrationId
  * @param {string} cloudId
  * @param {import('axios').AxiosInstance} jiraAxios  Shared instance with 401 interceptor
  * @param {string|null} [jobId]  Optional — for phase progress tracking
- * @returns {Promise<{workflows: object[], fields: object[], contextNodes: object[]}>}
+ * @returns {Promise<{workflows: object[], fields: object[], contextNodes: object[], boards: object[], sprints: object[]}>}
  */
-async function runSiteEnumeration(cloudId, jiraAxios, jobId = null) {
+async function runSiteEnumeration(integrationId, cloudId, jiraAxios, jobId = null) {
   // Step 1+2: workflows and field definitions run concurrently
   emitProgress(jobId, { phase: PHASES.WORKFLOW_ENUM, objectType: 'JiraWorkflowNode', objectKey: cloudId });
   const [workflows, fields] = await Promise.all([
@@ -191,12 +306,24 @@ async function runSiteEnumeration(cloudId, jiraAxios, jobId = null) {
     }
   }
 
-  return { workflows, fields, contextNodes: allContextNodes };
+  // Step 4: board and sprint enumeration (non-blocking — requires read:board-scope)
+  let boards = [];
+  let sprints = [];
+  try {
+    const boardResult = await enumerateBoards(integrationId, cloudId, jiraAxios);
+    boards = boardResult.boards;
+    sprints = boardResult.sprints;
+  } catch (err) {
+    console.warn(`[siteEnum] Board/sprint enumeration failed (non-fatal): ${err.message}`);
+  }
+
+  return { workflows, fields, contextNodes: allContextNodes, boards, sprints };
 }
 
 module.exports = {
   enumerateWorkflows,
   enumerateCustomFields,
   enumerateCustomFieldContexts,
+  enumerateBoards,
   runSiteEnumeration,
 };

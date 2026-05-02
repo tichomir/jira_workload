@@ -327,11 +327,42 @@ function showJobSummaryCard(job, progress, isRestore) {
   if ((succeeded || partial) && isRestore && (job.result || job.restoredCount !== undefined)) {
     const r = job.result || job;
     const failColor = (r.failedCount || 0) > 0 ? 'color:var(--amber)' : 'color:var(--text-muted)';
+    // Aggregate totals row
     detailHtml = `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px">
       <span style="font-size:12px;color:var(--text-muted)">Restored: <strong>${r.restoredCount || 0}</strong></span>
       <span style="font-size:12px;color:var(--text-muted)">Skipped: <strong>${r.skippedCount || 0}</strong></span>
       <span style="font-size:12px;${failColor}">Failed: <strong>${r.failedCount || 0}</strong></span>
     </div>`;
+    // Per-type breakdown
+    const byType = r.byType || {};
+    const typeOrder = ['issue', 'board', 'sprint', 'attachment', 'comment', 'project', 'workflow', 'customFieldDefinition'];
+    const typeLabels = { issue: 'Issues', board: 'Boards', sprint: 'Sprints', attachment: 'Attachments', comment: 'Comments', project: 'Projects', workflow: 'Workflows', customFieldDefinition: 'Custom Fields' };
+    const typeRows = typeOrder.filter(t => byType[t] && (byType[t].restored || byType[t].skipped || byType[t].failed))
+      .map(t => {
+        const c = byType[t];
+        const fColor = c.failed > 0 ? 'color:var(--amber)' : 'color:var(--text-muted)';
+        return `<div style="font-size:11px;color:var(--text-muted);display:flex;gap:8px;align-items:center">
+          <span style="min-width:100px;font-weight:600">${escHtml(typeLabels[t] || t)}</span>
+          <span>${c.restored || 0} restored</span>
+          <span>${c.skipped || 0} skipped</span>
+          <span style="${fColor}">${c.failed || 0} failed</span>
+        </div>`;
+      });
+    if (typeRows.length > 0) {
+      detailHtml += `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px;border-left:3px solid var(--border);padding-left:8px">${typeRows.join('')}</div>`;
+    }
+    // Restored issues with original key reference
+    const allItems = (r.stageResults || []).flatMap(s => s.items || []);
+    const restoredIssues = allItems.filter(i => i.objectType === 'issue' && i.status === 'success' && i.originalKey && i.targetKey);
+    if (restoredIssues.length > 0) {
+      const maxShow = 10;
+      const shown = restoredIssues.slice(0, maxShow);
+      const overflow = restoredIssues.length > maxShow ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">…and ${restoredIssues.length - maxShow} more</div>` : '';
+      const issueRows = shown.map(i =>
+        `<div style="font-size:11px;color:var(--text-muted);font-family:'SFMono-Regular',Consolas,monospace">${escHtml(i.targetKey)} ← restored from ${escHtml(i.originalKey)}</div>`
+      ).join('');
+      detailHtml += `<div style="margin-top:8px"><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:3px">Restored issues</div><div style="display:flex;flex-direction:column;gap:1px">${issueRows}</div>${overflow}</div>`;
+    }
   }
   if (progress) {
     detailHtml += `<div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap">
@@ -660,7 +691,7 @@ function pollRestoreJob(jobId) {
           const fc = job.failedCount || 0;
           const msg = `Restore completed with ${fc} failure${fc !== 1 ? 's' : ''} — ${job.restoredCount || 0} restored, ${job.skippedCount || 0} skipped`;
           const mappedErrors = (job.errors || []).map(e => ({
-            checkName: `${e.objectType || 'object'} ${e.id || ''}`,
+            checkName: e.originalKey ? `${e.objectType || 'object'} ${e.originalKey}` : `${e.objectType || 'object'} ${e.id || ''}`,
             errorCode: e.errorCode,
             detail: null,
           }));

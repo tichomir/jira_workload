@@ -71,6 +71,10 @@ export interface RestoreItemResult {
   status: ItemStatus;
   /** Jira ID of the restored object on success */
   targetId?: string;
+  /** New Jira issue key assigned after restore (issues only) */
+  targetKey?: string;
+  /** Original Jira issue key from the backup snapshot */
+  originalKey?: string;
   skipReason?: string;
   errorCode?: string;
   errorDetail?: string;
@@ -135,6 +139,12 @@ export interface BasketSummary {
 
 export type RestoreJobStatus = 'queued' | 'running' | 'complete' | 'failed';
 
+export interface RestoreTypeCounts {
+  restored: number;
+  skipped: number;
+  failed: number;
+}
+
 export interface RestoreResponse {
   restoreJobId: string;
   status: RestoreJobStatus;
@@ -144,6 +154,10 @@ export interface RestoreResponse {
   validationWarnings: ValidationCheckResult[];
   stageResults?: StageResult[];
   exportDownloadUrl?: string;
+  restoredCount?: number;
+  skippedCount?: number;
+  failedCount?: number;
+  byType?: Partial<Record<JiraObjectType, RestoreTypeCounts>>;
 }
 
 // ── Job Status Response ───────────────────────────────────────────────────────
@@ -155,6 +169,10 @@ export interface RestoreJobStatusResponse {
   stageResults: StageResult[];
   validationWarnings: ValidationCheckResult[];
   exportDownloadUrl?: string;
+  restoredCount?: number;
+  skippedCount?: number;
+  failedCount?: number;
+  byType?: Partial<Record<JiraObjectType, RestoreTypeCounts>>;
 }
 
 // ── Conflict Decision ─────────────────────────────────────────────────────────

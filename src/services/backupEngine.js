@@ -174,7 +174,7 @@ async function runIntegrationBackup(integrationId, jobId) {
   // 4. Site-level enumeration (runs regardless of project scope)
   updatePhase(PHASES.WORKFLOW_ENUM);
   console.info(`[backup] phase=site_enumeration integrationId=${integrationId}`);
-  const siteEnumResult = await runSiteEnumeration(cloudId, jiraAxios, jobId);
+  const siteEnumResult = await runSiteEnumeration(integrationId, cloudId, jiraAxios, jobId);
 
   // Update lastSyncedAt on connection
   const now = new Date().toISOString();
@@ -202,8 +202,8 @@ async function runIntegrationBackup(integrationId, jobId) {
       projects: projectResults.length,
       workflows: siteEnumResult.workflows.length,
       customFields: siteEnumResult.fields.length,
-      boards: 0,
-      sprints: 0,
+      boards: (siteEnumResult.boards || []).length,
+      sprints: (siteEnumResult.sprints || []).length,
       attachments: totalAttachments,
     },
   };
@@ -273,6 +273,49 @@ async function runIntegrationBackup(integrationId, jobId) {
       fields: field,
     });
   }
+  for (const board of siteEnumResult.boards || []) {
+    db.objectSnapshots.set(`${backupPointId}:JiraBoardNode:${board.id}`, {
+      backupPointId,
+      nodeType: 'JiraBoardNode',
+      id: String(board.id),
+      fields: board,
+    });
+    const projectKey = (board.location && board.location.projectKey) || null;
+    db.searchBoards.set(`${backupPointId}:${board.id}`, {
+      id: String(board.id),
+      backupPointId,
+      name: board.name,
+      type: board.type,
+      projectKey,
+      sprintCount: 0,
+    });
+  }
+  // Count sprints per board for searchBoards
+  for (const sprint of siteEnumResult.sprints || []) {
+    const boardSearchKey = `${backupPointId}:${sprint.originBoardId}`;
+    const boardEntry = db.searchBoards.get(boardSearchKey);
+    if (boardEntry) {
+      boardEntry.sprintCount = (boardEntry.sprintCount || 0) + 1;
+      db.searchBoards.set(boardSearchKey, boardEntry);
+    }
+    db.objectSnapshots.set(`${backupPointId}:JiraSprintNode:${sprint.id}`, {
+      backupPointId,
+      nodeType: 'JiraSprintNode',
+      id: String(sprint.id),
+      fields: sprint,
+    });
+    db.searchSprints.set(`${backupPointId}:${sprint.id}`, {
+      id: String(sprint.id),
+      backupPointId,
+      name: sprint.name,
+      state: sprint.state,
+      boardId: String(sprint.originBoardId),
+      startDate: sprint.startDate || null,
+      endDate: sprint.endDate || null,
+      completeDate: sprint.completeDate || null,
+      issueCount: 0,
+    });
+  }
 
   // Build and persist manifests so the Object Explorer diff engine can find entries.
   const issueManifestEntries = [];
@@ -306,6 +349,18 @@ async function runIntegrationBackup(integrationId, jobId) {
   }));
   saveManifest(backupPointId, 'JiraCustomFieldDefinitionNode', fieldManifestEntries);
 
+  const boardManifestEntries = (siteEnumResult.boards || []).map(board => ({
+    id: String(board.id),
+    contentHash: computeContentHash(board),
+  }));
+  saveManifest(backupPointId, 'JiraBoardNode', boardManifestEntries);
+
+  const sprintManifestEntries = (siteEnumResult.sprints || []).map(sprint => ({
+    id: String(sprint.id),
+    contentHash: computeContentHash(sprint),
+  }));
+  saveManifest(backupPointId, 'JiraSprintNode', sprintManifestEntries);
+
   updatePhase(PHASES.MANIFEST_WRITE);
   console.info(`[backup] phase=persisting integrationId=${integrationId}`);
   db.saveDb();
@@ -324,6 +379,8 @@ async function runIntegrationBackup(integrationId, jobId) {
       workflowCount: siteEnumResult.workflows.length,
       fieldCount: siteEnumResult.fields.length,
       contextNodeCount: siteEnumResult.contextNodes.length,
+      boardCount: (siteEnumResult.boards || []).length,
+      sprintCount: (siteEnumResult.sprints || []).length,
     },
     completedAt: now,
   };

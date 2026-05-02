@@ -232,21 +232,27 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         throw Object.assign(new Error('Cannot restore issue: no target project key available'), { code: 'MISSING_PROJECT_KEY' });
       }
 
-      // Apply field ID mapping for cross-site restores
+      // Include all non-null custom fields from the backup for both same-site and cross-site restores.
+      // For cross-site, apply the field ID mapping (fieldMap); for same-site, use the original key.
       let customFields = {};
-      if (destination.isCrossSite && fieldMap) {
-        for (const [k, v] of Object.entries(fields)) {
-          if (k.startsWith('customfield_')) {
-            const mappedKey = fieldMap[k] || k;
-            customFields[mappedKey] = v;
-          }
+      for (const [k, v] of Object.entries(fields)) {
+        if (k.startsWith('customfield_') && v !== null && v !== undefined) {
+          const mappedKey = (destination.isCrossSite && fieldMap && fieldMap[k]) ? fieldMap[k] : k;
+          customFields[mappedKey] = v;
         }
       }
+
+      // Build prefixed summary: "[Restored from ORIG-KEY] original summary" (ADR-S22-004)
+      // Strip any existing prefix before prepending (idempotent on re-restore).
+      const originalKey = item.issueKey || item.id;
+      const rawSummary = fields.summary || 'Restored issue';
+      const strippedSummary = rawSummary.replace(/^\[Restored from [A-Z][A-Z0-9_]*-\d+\]\s*/, '');
+      const prefixedSummary = `[Restored from ${originalKey}] ${strippedSummary}`;
 
       const issuePayload = {
         fields: {
           project: { key: projKey },
-          summary: fields.summary || 'Restored issue',
+          summary: prefixedSummary,
           issuetype: fields.issuetype
             ? { name: fields.issuetype.name || 'Task' }
             : { name: 'Task' },
@@ -263,7 +269,6 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
       }
 
       // Labels — include original-key label per ADR-004
-      const originalKey = item.issueKey || item.id;
       const existingLabels = Array.isArray(fields.labels) ? fields.labels : [];
       issuePayload.fields.labels = [...existingLabels, `original-key:${originalKey}`];
 
@@ -362,8 +367,22 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         return { targetId: existingIssueKey, targetKey: existingIssueKey, payload: issuePayload };
       }
 
-      // Issue does not exist — create it
-      const resp = await jiraAxios.post(`${base}/rest/api/3/issue`, issuePayload);
+      // Issue does not exist — create it (retry without custom fields if 400 from field validation)
+      let resp;
+      try {
+        resp = await jiraAxios.post(`${base}/rest/api/3/issue`, issuePayload);
+      } catch (createErr) {
+        if (createErr.isAxiosError && createErr.response && createErr.response.status === 400 && Object.keys(customFields).length > 0) {
+          console.warn(`[restore] Issue create with custom fields failed (400), retrying without custom fields for ${issueKeyStr}: ${createErr.message}`);
+          const fallbackPayload = { fields: { ...issuePayload.fields } };
+          for (const k of Object.keys(customFields)) {
+            delete fallbackPayload.fields[k];
+          }
+          resp = await jiraAxios.post(`${base}/rest/api/3/issue`, fallbackPayload);
+        } else {
+          throw createErr;
+        }
+      }
       const newKey = resp.data.key;
 
       // Post backed-up comments to the newly created issue
@@ -479,19 +498,73 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
     }
 
     case 'board': {
+      // ADR-S22-003: use location.projectKey, not filterId (source-site artifact)
+      const boardProjectKey = (fields.location && fields.location.projectKey)
+        || targetProjectKey
+        || null;
       const boardPayload = {
         name: fields.name || 'Restored Board',
         type: fields.type || 'scrum',
-        filterId: fields.filterId,
+        location: boardProjectKey
+          ? { type: 'project', projectKeyOrId: boardProjectKey }
+          : undefined,
       };
+      if (!boardPayload.location) delete boardPayload.location;
       if (!jiraAxios) return { targetId: uuidv4(), payload: boardPayload };
-      const resp = await jiraAxios.post(`${base}/rest/agile/1.0/board`, boardPayload);
-      return { targetId: String(resp.data.id) };
+      try {
+        const resp = await jiraAxios.post(`${base}/rest/agile/1.0/board`, boardPayload);
+        return { targetId: String(resp.data.id) };
+      } catch (err) {
+        if (err.isAxiosError && err.response && (err.response.status === 400 || err.response.status === 403)) {
+          console.warn(`[restore] Board create failed (${err.response.status}), skipping: ${err.message}`);
+          return { targetId: uuidv4(), skipped: true };
+        }
+        throw err;
+      }
+    }
+
+    case 'attachment': {
+      // Re-upload an attachment to the target issue
+      const sourceIssueId = fields.issueId || fields.issueKey || item.issueKey;
+      const targetIssueKey = (sourceIssueId && sourceToTargetIssueKey[sourceIssueId])
+        || (sourceIssueId && sourceToTargetIssueKey[String(sourceIssueId)])
+        || sourceIssueId;
+
+      if (!targetIssueKey) {
+        throw Object.assign(new Error('Cannot restore attachment: target issue key unknown'), { code: 'MISSING_ISSUE_KEY' });
+      }
+
+      const storageRef = fields.binaryStorageRef || item.binaryStorageRef;
+      if (!storageRef) {
+        // Sidecar-only attachment — no binary was downloaded during backup; skip gracefully
+        return { targetId: uuidv4(), skipped: true };
+      }
+
+      const { downloadBinaryFromStorage } = require('./attachmentMaterialisation');
+      const binary = downloadBinaryFromStorage(storageRef);
+      if (!binary) {
+        // Binary missing from disk (e.g. orphaned sidecar ref) — skip gracefully
+        return { targetId: uuidv4(), skipped: true };
+      }
+
+      if (!jiraAxios) return { targetId: uuidv4(), skipped: true };
+
+      // Multipart upload — requires X-Atlassian-Token: no-check
+      const FormData = require('form-data');
+      const form = new FormData();
+      form.append('file', binary, { filename: fields.filename || 'attachment', contentType: fields.mimeType || 'application/octet-stream' });
+      const resp = await jiraAxios.post(
+        `${base}/rest/api/3/issue/${targetIssueKey}/attachments`,
+        form,
+        { headers: { ...form.getHeaders(), 'X-Atlassian-Token': 'no-check' } },
+      );
+      const attachmentId = resp.data && Array.isArray(resp.data) && resp.data[0] ? resp.data[0].id : uuidv4();
+      return { targetId: String(attachmentId) };
     }
 
     case 'sprint': {
-      const sourceBoardId = fields.boardId;
-      const targetBoardId = sourceBoardId && sourceToTargetIssueKey[`board:${sourceBoardId}`];
+      const sourceBoardId = fields.boardId || fields.originBoardId;
+      const targetBoardId = sourceBoardId && sourceToTargetIssueKey[`board:${String(sourceBoardId)}`];
       if (!targetBoardId) {
         throw Object.assign(new Error('Sprint board not restored yet'), { code: 'DEPENDENCY_MISSING' });
       }
@@ -607,6 +680,7 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
           objectType: item.objectType,
           status: 'skipped',
           skipReason: 'CONFLICT_SKIPPED',
+          originalKey: item.issueKey || undefined,
         });
         continue;
       }
@@ -622,12 +696,13 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
             const projKey = (item.fields && item.fields.key) || (typeof item.id === 'string' ? item.id : null);
             if (projKey) sourceToTargetIssueKey[`project:${projKey}`] = projKey;
           }
-          itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error });
+          itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error, originalKey: item.issueKey || undefined });
         } else {
           if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }
+          if (item.objectType === 'sprint') { sourceToTargetIssueKey[`sprint:${item.id}`] = targetId; }
           if (item.objectType === 'issue' && targetKey) sourceToTargetIssueKey[item.id] = targetKey;
           if (item.objectType === 'project' && targetKey) sourceToTargetIssueKey[`project:${targetKey}`] = targetKey;
-          itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey });
+          itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey, originalKey: item.issueKey || undefined });
           if (destination.type === 'export' && exportEntries) exportEntries.push({ id: item.id, objectType: item.objectType, targetId });
         }
         continue;
@@ -635,7 +710,7 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
 
       if (conflictModeEffective === 'ask') {
         pendingConflicts.push({ itemId: item.id, objectType: item.objectType });
-        itemResults.push({ id: item.id, objectType: item.objectType, status: 'pending', skipReason: 'AWAITING_CONFLICT_DECISION' });
+        itemResults.push({ id: item.id, objectType: item.objectType, status: 'pending', skipReason: 'AWAITING_CONFLICT_DECISION', originalKey: item.issueKey || undefined });
         continue;
       }
     }
@@ -652,12 +727,13 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
         const projKey = (item.fields && item.fields.key) || (typeof item.id === 'string' ? item.id : null);
         if (projKey) sourceToTargetIssueKey[`project:${projKey}`] = projKey;
       }
-      itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error });
+      itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error, originalKey: item.issueKey || undefined });
     } else {
       if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }
+      if (item.objectType === 'sprint') { sourceToTargetIssueKey[`sprint:${item.id}`] = targetId; }
       if (item.objectType === 'issue' && targetKey) sourceToTargetIssueKey[item.id] = targetKey;
       if (item.objectType === 'project' && targetKey) sourceToTargetIssueKey[`project:${targetKey}`] = targetKey;
-      itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey });
+      itemResults.push({ id: item.id, objectType: item.objectType, status: 'success', targetId, targetKey, originalKey: item.issueKey || undefined });
       if (exportEntry && exportEntries) exportEntries.push(exportEntry);
     }
   }
@@ -701,6 +777,121 @@ function buildExportArchive(restoreJobId, exportEntries, basketItems, destinatio
   }));
 
   return { restoreJobId, manifest, objects, attachments, exportFormat: destination.exportFormat || 'json+zip' };
+}
+
+// ── Stage 3b: Issue Link restore ─────────────────────────────────────────────
+
+/**
+ * After all issues are restored, create issue links using the source→target key map.
+ * Links reference original Jira issue keys; we map them to target keys via sourceToTargetIssueKey.
+ *
+ * @param {object[]} basket
+ * @param {object} sourceToTargetIssueKey
+ * @param {import('axios').AxiosInstance} jiraAxios
+ * @param {string} cloudId
+ * @returns {Promise<{succeeded: number, failed: number}>}
+ */
+async function restoreIssueLinks(basket, sourceToTargetIssueKey, jiraAxios, cloudId) {
+  if (!jiraAxios) return { succeeded: 0, failed: 0 };
+  const base = `${JIRA_API_BASE}/${cloudId}`;
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const item of basket) {
+    if (item.objectType !== 'issue') continue;
+    const links = (item.fields && item.fields.issuelinks) || [];
+    for (const link of links) {
+      try {
+        const linkTypeName = (link.type && link.type.name) || 'Relates';
+        let outwardKey = null;
+        let inwardKey = null;
+
+        if (link.outwardIssue) {
+          const srcKey = link.outwardIssue.key;
+          outwardKey = sourceToTargetIssueKey[srcKey] || sourceToTargetIssueKey[link.outwardIssue.id] || srcKey;
+        }
+        if (link.inwardIssue) {
+          const srcKey = link.inwardIssue.key;
+          inwardKey = sourceToTargetIssueKey[srcKey] || sourceToTargetIssueKey[link.inwardIssue.id] || srcKey;
+        }
+
+        const thisIssueTargetKey = sourceToTargetIssueKey[item.id] || sourceToTargetIssueKey[item.issueKey] || item.issueKey;
+
+        // Build link request: one of inward/outward must be the current issue
+        const inwardIssueKey = inwardKey || thisIssueTargetKey;
+        const outwardIssueKey = outwardKey || thisIssueTargetKey;
+
+        if (!inwardIssueKey || !outwardIssueKey || inwardIssueKey === outwardIssueKey) continue;
+
+        await jiraAxios.post(`${base}/rest/api/3/issueLink`, {
+          type: { name: linkTypeName },
+          inwardIssue: { key: inwardIssueKey },
+          outwardIssue: { key: outwardIssueKey },
+        });
+        succeeded++;
+      } catch (err) {
+        failed++;
+        console.debug(`[restore] Issue link creation failed: ${err.message}`);
+      }
+    }
+  }
+
+  return { succeeded, failed };
+}
+
+// ── Stage 5b: Issue → Sprint association ─────────────────────────────────────
+
+/**
+ * After sprints are restored, associate issues with their target sprints.
+ * Source sprint ID is read from fields.customfield_10020 (sprint field).
+ *
+ * @param {object[]} basket
+ * @param {object} sourceToTargetIssueKey  Also contains sprint:${sourceSprintId} → targetSprintId
+ * @param {import('axios').AxiosInstance} jiraAxios
+ * @param {string} cloudId
+ * @returns {Promise<{succeeded: number, failed: number}>}
+ */
+async function associateIssuesToSprints(basket, sourceToTargetIssueKey, jiraAxios, cloudId) {
+  if (!jiraAxios) return { succeeded: 0, failed: 0 };
+  const base = `${JIRA_API_BASE}/${cloudId}`;
+  let succeeded = 0;
+  let failed = 0;
+
+  // Group issues by their target sprint
+  const sprintToIssues = {};
+  for (const item of basket) {
+    if (item.objectType !== 'issue') continue;
+    const targetKey = sourceToTargetIssueKey[item.id] || sourceToTargetIssueKey[item.issueKey];
+    if (!targetKey) continue;
+
+    // customfield_10020 is the Sprint field — it's an array of sprint objects or IDs
+    const sprintField = item.fields && item.fields.customfield_10020;
+    const sprintValues = Array.isArray(sprintField) ? sprintField : (sprintField ? [sprintField] : []);
+
+    for (const sprintVal of sprintValues) {
+      const srcSprintId = String(typeof sprintVal === 'object' ? (sprintVal.id || sprintVal) : sprintVal);
+      const targetSprintId = sourceToTargetIssueKey[`sprint:${srcSprintId}`];
+      if (!targetSprintId) continue;
+      if (!sprintToIssues[targetSprintId]) sprintToIssues[targetSprintId] = [];
+      sprintToIssues[targetSprintId].push(targetKey);
+    }
+  }
+
+  for (const [targetSprintId, issueKeys] of Object.entries(sprintToIssues)) {
+    // POST /rest/agile/1.0/sprint/{id}/issue in batches of 50
+    for (let i = 0; i < issueKeys.length; i += 50) {
+      const batch = issueKeys.slice(i, i + 50);
+      try {
+        await jiraAxios.post(`${base}/rest/agile/1.0/sprint/${targetSprintId}/issue`, { issues: batch });
+        succeeded += batch.length;
+      } catch (err) {
+        failed += batch.length;
+        console.debug(`[restore] Sprint issue association failed for sprintId=${targetSprintId}: ${err.message}`);
+      }
+    }
+  }
+
+  return { succeeded, failed };
 }
 
 // ── Main orchestrator ─────────────────────────────────────────────────────────
@@ -849,6 +1040,26 @@ async function initiateRestore(restoreRequest) {
 
     if (pendingConflicts.length > 0) {
       job.pendingConflicts.push(...pendingConflicts);
+    }
+
+    // Stage 3b: restore issue links after all issues have been created (stage 3)
+    if (stageNum === 3 && jiraAxios && destination.type !== 'export') {
+      try {
+        const linkResult = await restoreIssueLinks(basketItems, sourceToTargetIssueKey, jiraAxios, effectiveCloudId);
+        console.info(`[restore] Stage 3b (issue links): succeeded=${linkResult.succeeded} failed=${linkResult.failed}`);
+      } catch (err) {
+        console.warn(`[restore] Stage 3b (issue links) failed non-fatally: ${err.message}`);
+      }
+    }
+
+    // Stage 5b: associate issues to restored sprints after sprints are created (stage 5)
+    if (stageNum === 5 && jiraAxios && destination.type !== 'export') {
+      try {
+        const sprintAssocResult = await associateIssuesToSprints(basketItems, sourceToTargetIssueKey, jiraAxios, effectiveCloudId);
+        console.info(`[restore] Stage 5b (sprint→issue): succeeded=${sprintAssocResult.succeeded} failed=${sprintAssocResult.failed}`);
+      } catch (err) {
+        console.warn(`[restore] Stage 5b (sprint→issue) failed non-fatally: ${err.message}`);
+      }
     }
   }
 

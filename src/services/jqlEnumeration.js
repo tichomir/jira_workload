@@ -68,7 +68,7 @@ async function fetchIssuePage(cloudId, jiraAxios, jql, startAt, connectionId) {
   let response;
   try {
     response = await jiraAxios.get(url, {
-      params: { jql, startAt, maxResults: PAGE_SIZE },
+      params: { jql, startAt, maxResults: PAGE_SIZE, fields: '*all', expand: 'names' },
     });
   } catch (err) {
     // 410 Gone: the cloudId URL may be stale. Force re-resolution once and retry.
