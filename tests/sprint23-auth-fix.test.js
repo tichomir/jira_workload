@@ -84,7 +84,12 @@ function seedConnection(overrides = {}) {
     accessToken: 'tok',
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
     cloudIdVerifiedAt: new Date().toISOString(),
-    grantedScopes: ['read:jira-work', 'read:board-scope:jira-software', 'write:board-scope:jira-software'],
+    grantedScopes: [
+      'read:jira-work', 'read:jira-user', 'read:board-scope:jira-software',
+      'write:jira-work', 'write:issue:jira', 'write:project:jira',
+      'manage:jira-project', 'manage:jira-configuration', 'write:field:jira',
+      'write:board-scope:jira-software', 'write:sprint:jira-software', 'offline_access',
+    ],
     deletedAt: null,
     ...overrides,
   });
@@ -325,9 +330,10 @@ describe('TC-5: AUTH_ERROR on board write persists RECONNECT_REQUIRED on restore
   test('restore response contains authError with code RECONNECT_REQUIRED when board write fails with AUTH_ERROR', async () => {
     const connId = seedConnection({
       grantedScopes: [
-        'read:jira-work',
-        'read:board-scope:jira-software',
-        'write:board-scope:jira-software',
+        'read:jira-work', 'read:board-scope:jira-software',
+        'write:jira-work', 'write:issue:jira', 'write:project:jira',
+        'manage:jira-project', 'manage:jira-configuration', 'write:field:jira',
+        'write:board-scope:jira-software', 'write:sprint:jira-software',
       ],
     });
     const integrationId = uuidv4();

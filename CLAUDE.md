@@ -3448,3 +3448,65 @@ _Sprint started. Role checkpoints below will update as work completes._
 - ✅ End-to-end QA: full restore of KS project with zero failures — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 2 — OAuth Reauthentication & Scope Completeness | 2026-05-02 | ⏳ in progress | 16 SP est.
+**Goal:** I think you need to work on allow reauthenticationl, I don't think you are providing all the scopes really needed. See what I'm getting when I try to restore: 
+
+
+Restore failed
+The Atlassian integration is missing the write:board-scope:jira-software scope required for board and sprint restore on target site e2f3e272-f44d-4fee-a2c9-48573056d476. Please reconnect the integration to grant this scope.
+›
+Jira Software ActiveBOARD_WRITE_SCOPE_MISSING— The Atlassian integration is missing the write:board-scope:jira-software scope required for board and sprint restore on target site e2f3e272-f44d-4fee-a2c9-48573056d476. Please reconnect the integration to grant this scope.
+
+So yes, I should be able to refresh the authentication, as deleting it creates a lot of problems. 
+
+Look at the summary from the last sprint about the recommendations and work on those !
+
+_Sprint started. Role checkpoints below will update as work completes._
+
+---
+### Sprint 2 — OAuth Reauthentication & Scope Completeness | 2026-05-02 | ✅ Software Architect checkpoint (1/1 done)
+
+- ✅ Audit and finalize OAuth scope manifest including write:board-scope:jira-software (⚡ Quick, 2 SP)
+
+---
+### Sprint 24 — OAuth Reauthentication & Scope Completeness | 2026-05-02 | ✅ done | 16 SP
+**Goal:** Allow reauthentication of an existing integration without deleting it. The BOARD_WRITE_SCOPE_MISSING error on restore exposed that write:board-scope:jira-software was missing from granted scopes; re-doing OAuth from scratch loses backup history and UUIDs.
+
+**Key decisions:**
+- `POST /api/v1/integrations/:id/reauthenticate` initiates a new PKCE OAuth flow; the `reauthConnectionId` marker in `db.pendingStates` signals the callback to UPDATE the existing record in place rather than CREATE a new one.
+- Connection UUID, backup history (backupPoints), cloudId, and all schedules are preserved across reauthentication.
+- If the newly granted tokens resolve to a different cloudId (site migration), the callback redirects with `CLOUD_ID_MISMATCH` and leaves the connection untouched.
+- A `REAUTH` lifecycle event is written to `db.lifecycleEvents` as an immutable audit log entry.
+- 21-scope manifest in `src/config/scopes.js` finalized: 19 required + 2 optional board scopes (`read:board-scope:jira-software`, `write:board-scope:jira-software`); absence of write:board-scope triggers `DEGRADED` connection status but does not block connection establishment.
+- `RESTORE_SCOPE_REQUIREMENTS` in `validationService.js` enforces `write:board-scope:jira-software` as a blocking pre-flight check for board/sprint basket items.
+- `EXCLUDED_CUSTOM_FIELDS` in `restoreOrchestrator.js` (Sprint 23 fix) regression-verified: 6 fields stripped before issue create to avoid 400 errors.
+
+**Delivered:**
+- ✅ Audit and finalize OAuth scope manifest including write:board-scope:jira-software — Software Architect (⚡ Quick, 2 SP)
+- ✅ Implement POST /api/v1/integrations/:id/reauthenticate endpoint with PKCE and reauthConnectionId marker — Backend Developer (◈ Standard, 3 SP)
+- ✅ Implement reauthentication path in OAuth callback handler: in-place token update, REAUTH audit event, CLOUD_ID_MISMATCH guard — Backend Developer (◉ Deep, 5 SP)
+- ✅ Add reconnect/reauthenticate UI affordance on connections page and callback page — Frontend Developer (⚡ Quick, 2 SP)
+- ✅ E2E QA: 9 test cases (TC-8 through TC-16) covering full reauth loop, backup preservation, audit log, scope re-validation, and custom-field regression — Qa Engineer (◉ Deep, 4 SP)
+
+---
+### Sprint 2 — OAuth Reauthentication & Scope Completeness | 2026-05-02 | ✅ done | 16 SP
+**Goal:** I think you need to work on allow reauthenticationl, I don't think you are providing all the scopes really needed. See what I'm getting when I try to restore: 
+
+
+Restore failed
+The Atlassian integration is missing the write:board-scope:jira-software scope required for board and sprint restore on target site e2f3e272-f44d-4fee-a2c9-48573056d476. Please reconnect the integration to grant this scope.
+›
+Jira Software ActiveBOARD_WRITE_SCOPE_MISSING— The Atlassian integration is missing the write:board-scope:jira-software scope required for board and sprint restore on target site e2f3e272-f44d-4fee-a2c9-48573056d476. Please reconnect the integration to grant this scope.
+
+So yes, I should be able to refresh the authentication, as deleting it creates a lot of problems. 
+
+Look at the summary from the last sprint about the recommendations and work on those !
+
+**Delivered:**
+- ✅ Audit and finalize OAuth scope manifest including write:board-scope:jira-software — Software Architect (⚡ Quick, 2 SP)
+- ✅ Implement OAuth reauthentication (refresh-scopes) flow without deleting the integration — Backend Developer (◉ Deep, 5 SP)
+- ✅ Add 'Reconnect integration' UI affordance with scope-missing error surfacing — Frontend Developer (◈ Standard, 3 SP)
+- ✅ Pre-restore scope validation with actionable error codes — Backend Developer (◈ Standard, 3 SP)
+- ✅ E2E QA: scope-missing → reconnect → successful board/sprint restore — Qa Engineer (◈ Standard, 3 SP)
+
+---

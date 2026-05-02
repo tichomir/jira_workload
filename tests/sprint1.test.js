@@ -39,8 +39,9 @@ const { encrypt } = require('../src/services/crypto');
 // ---------------------------------------------------------------------------
 // Scope constants
 // ---------------------------------------------------------------------------
-const ALL_SCOPES = SCOPE_NAMES; // 20 scopes
-const ALL_REQUIRED_SCOPES = SCOPE_NAMES.filter((s) => s !== 'read:board-scope:jira-software');
+const ALL_SCOPES = SCOPE_NAMES; // 21 scopes (19 required + 2 optional board scopes)
+const BOARD_OPTIONAL_SCOPES = ['read:board-scope:jira-software', 'write:board-scope:jira-software'];
+const ALL_REQUIRED_SCOPES = SCOPE_NAMES.filter((s) => !BOARD_OPTIONAL_SCOPES.includes(s));
 
 // ---------------------------------------------------------------------------
 // Test helper: seed a finalized OAuthConnection directly into the in-memory db
@@ -101,7 +102,7 @@ beforeEach(() => {
 // 1. EXPRESS PATH — REDIRECT URL
 // ============================================================
 describe('Express OAuth path — redirect URL', () => {
-  test('generates auth URL with response_type=code, client_id, redirect_uri, and all 20 scopes', async () => {
+  test('generates auth URL with response_type=code, client_id, redirect_uri, and all 21 scopes', async () => {
     const res = await request(app)
       .post('/api/v1/oauth/express/redirect')
       .send({ userId: 'user-1', redirectUri: 'https://example.com/callback' });
@@ -120,7 +121,7 @@ describe('Express OAuth path — redirect URL', () => {
     expect(url.searchParams.get('audience')).toBe('api.atlassian.com');
 
     const scopesInUrl = url.searchParams.get('scope').split(' ');
-    expect(scopesInUrl).toHaveLength(20);
+    expect(scopesInUrl).toHaveLength(21);
     for (const scope of ALL_SCOPES) {
       expect(scopesInUrl).toContain(scope);
     }
@@ -284,13 +285,13 @@ describe('Manual OAuth path', () => {
     const url = new URL(res.body.authorizationUrl);
     expect(url.searchParams.get('client_id')).toBe(VALID_BODY.clientId);
     const scopesInUrl = url.searchParams.get('scope').split(' ');
-    expect(scopesInUrl).toHaveLength(20);
+    expect(scopesInUrl).toHaveLength(21);
 
     const { confirmationDetails } = res.body;
     expect(confirmationDetails).toBeDefined();
     expect(confirmationDetails.redirectUri).toBe(VALID_BODY.redirectUri);
     expect(confirmationDetails.siteUrl).toBe(VALID_BODY.siteUrl);
-    expect(confirmationDetails.requestedScopes).toHaveLength(20);
+    expect(confirmationDetails.requestedScopes).toHaveLength(21);
     // clientId is masked
     expect(confirmationDetails.clientIdMasked).toMatch(/^\.\.\./);
   });
@@ -331,7 +332,7 @@ describe('Manual OAuth path', () => {
 // 4. SCOPE VALIDATION
 // ============================================================
 describe('Scope validation — POST /api/v1/oauth/scopes/validate', () => {
-  test('all 20 scopes granted → overallStatus=PASS, connectionAllowed=true, all entries severity=OK', async () => {
+  test('all 21 scopes granted → overallStatus=PASS, connectionAllowed=true, all entries severity=OK', async () => {
     const conn = makeConnection({ grantedScopes: ALL_SCOPES });
 
     const res = await request(app)
@@ -343,7 +344,7 @@ describe('Scope validation — POST /api/v1/oauth/scopes/validate', () => {
     expect(res.body.connectionAllowed).toBe(true);
     expect(res.body.missingRequiredScopes).toHaveLength(0);
     expect(res.body.missingOptionalScopes).toHaveLength(0);
-    expect(res.body.entries).toHaveLength(20);
+    expect(res.body.entries).toHaveLength(21);
     for (const entry of res.body.entries) {
       expect(entry.severity).toBe('OK');
       expect(entry.granted).toBe(true);
@@ -1115,5 +1116,215 @@ describe('Project scope configuration — PATCH /api/v1/integrations/:id/project
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('CONNECTION_DELETED');
+  });
+});
+
+// ============================================================
+// 11. REAUTHENTICATION — POST /api/v1/integrations/:id/reauthenticate
+// ============================================================
+describe('Reauthentication — POST /api/v1/integrations/:id/reauthenticate', () => {
+  test('returns authorization URL, state, and connectionId for an active connection', async () => {
+    const conn = makeConnection();
+
+    const res = await request(app)
+      .post(`/api/v1/integrations/${conn.id}/reauthenticate`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authorizationUrl).toBeDefined();
+    expect(res.body.state).toBeDefined();
+    expect(res.body.expiresAt).toBeDefined();
+    expect(res.body.connectionId).toBe(conn.id);
+
+    // URL must point to Atlassian auth with all 21 scopes
+    const url = new URL(res.body.authorizationUrl);
+    expect(url.hostname).toBe('auth.atlassian.com');
+    const scopesInUrl = url.searchParams.get('scope').split(' ');
+    expect(scopesInUrl).toHaveLength(21);
+    for (const scope of ALL_SCOPES) {
+      expect(scopesInUrl).toContain(scope);
+    }
+  });
+
+  test('pending state includes reauthConnectionId referencing the existing connection', async () => {
+    const conn = makeConnection();
+
+    const res = await request(app)
+      .post(`/api/v1/integrations/${conn.id}/reauthenticate`);
+
+    expect(res.status).toBe(200);
+    const storedState = db.pendingStates.get(res.body.state);
+    expect(storedState).toBeDefined();
+    expect(storedState.reauthConnectionId).toBe(conn.id);
+    expect(storedState.codeVerifier).toBeDefined();
+  });
+
+  test('returns 404 for unknown connection', async () => {
+    const res = await request(app)
+      .post('/api/v1/integrations/does-not-exist/reauthenticate');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('CONNECTION_NOT_FOUND');
+  });
+
+  test('returns 404 for hard-deleted connection', async () => {
+    const conn = makeConnection({ status: 'hard_deleted' });
+    const res = await request(app)
+      .post(`/api/v1/integrations/${conn.id}/reauthenticate`);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================
+// 12. REAUTHENTICATION CALLBACK — updates existing connection in place
+// ============================================================
+describe('Reauthentication callback — updates existing connection in place', () => {
+  function seedReauthState(stateId, connectionId, overrides = {}) {
+    db.pendingStates.set(stateId, {
+      state: stateId,
+      codeVerifier: 'test-code-verifier',
+      userId: 'user-callback',
+      redirectUri: 'https://example.com/callback',
+      path: 'express',
+      reauthConnectionId: connectionId,
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      ...overrides,
+    });
+  }
+
+  test('callback with reauthConnectionId updates tokens + scopes on existing connection (UUID unchanged)', async () => {
+    const conn = makeConnection({
+      cloudId: 'cloud-abc',
+      boardScopeDegraded: true,
+      status: 'degraded',
+    });
+    const originalId = conn.id;
+
+    seedReauthState('reauth-state-1', conn.id);
+
+    // Seed a CloudSite so the update path runs
+    const cloudSiteId = 'cs-' + conn.id;
+    db.cloudSites.set(cloudSiteId, {
+      id: cloudSiteId,
+      cloudId: 'cloud-abc',
+      connectionId: conn.id,
+      availableScopes: [],
+      resolvedAt: new Date().toISOString(),
+      cacheExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // All 21 scopes now granted (including board write scope)
+    axios.post.mockResolvedValue({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        scope: ALL_SCOPES.join(' '),
+      },
+    });
+    axios.get.mockResolvedValue({
+      data: [
+        { id: 'cloud-abc', name: 'Acme Jira', url: 'https://acme.atlassian.net', scopes: ALL_SCOPES },
+      ],
+    });
+
+    const res = await request(app)
+      .get('/api/v1/oauth/express/callback')
+      .query({ code: 'reauth-code', state: 'reauth-state-1' })
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('status=success');
+    expect(res.headers.location).toContain('reauth=true');
+    expect(res.headers.location).toContain(originalId);
+
+    // No new connection created — still exactly one connection (the original)
+    expect(db.connections.size).toBe(1);
+    const updated = db.connections.get(originalId);
+    expect(updated).toBeDefined();
+    expect(updated.id).toBe(originalId);
+
+    // Tokens updated (encrypted, not plaintext)
+    expect(updated.accessToken).not.toBe('new-access-token');
+    expect(updated.accessToken.split('.')).toHaveLength(3);
+
+    // Scopes refreshed — board scope no longer degraded
+    expect(updated.boardScopeDegraded).toBe(false);
+    expect(updated.status).toBe('active');
+    expect(updated.grantedScopes).toEqual(expect.arrayContaining(ALL_SCOPES));
+  });
+
+  test('callback emits REAUTH lifecycle event with scope details', async () => {
+    const conn = makeConnection({ cloudId: 'cloud-xyz' });
+    seedReauthState('reauth-state-2', conn.id);
+
+    axios.post.mockResolvedValue({
+      data: {
+        access_token: 'at2',
+        refresh_token: 'rt2',
+        expires_in: 3600,
+        scope: ALL_SCOPES.join(' '),
+      },
+    });
+    axios.get.mockResolvedValue({
+      data: [{ id: 'cloud-xyz', name: 'XYZ Jira', url: 'https://xyz.atlassian.net', scopes: ALL_SCOPES }],
+    });
+
+    await request(app)
+      .get('/api/v1/oauth/express/callback')
+      .query({ code: 'reauth-code-2', state: 'reauth-state-2' })
+      .redirects(0);
+
+    const reauthEvents = [...db.lifecycleEvents.values()].filter(
+      (e) => e.eventType === 'REAUTH' && e.connectionId === conn.id
+    );
+    expect(reauthEvents).toHaveLength(1);
+    expect(reauthEvents[0].metadata.grantedScopes).toEqual(expect.arrayContaining(ALL_SCOPES));
+  });
+
+  test('callback redirects with CLOUD_ID_MISMATCH if the site is no longer accessible', async () => {
+    const conn = makeConnection({ cloudId: 'cloud-original' });
+    seedReauthState('reauth-state-3', conn.id);
+
+    axios.post.mockResolvedValue({
+      data: { access_token: 'at3', refresh_token: 'rt3', expires_in: 3600, scope: ALL_SCOPES.join(' ') },
+    });
+    // Different site returned — original cloudId gone
+    axios.get.mockResolvedValue({
+      data: [{ id: 'cloud-different', name: 'Different Site', url: 'https://different.atlassian.net', scopes: ALL_SCOPES }],
+    });
+
+    const res = await request(app)
+      .get('/api/v1/oauth/express/callback')
+      .query({ code: 'reauth-code-3', state: 'reauth-state-3' })
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('CLOUD_ID_MISMATCH');
+    expect(res.headers.location).toContain('status=error');
+
+    // Original connection unchanged
+    const unchanged = db.connections.get(conn.id);
+    expect(unchanged.cloudId).toBe('cloud-original');
+  });
+
+  test('callback with reauthConnectionId for missing connection redirects with CONNECTION_NOT_FOUND', async () => {
+    const nonExistentId = 'does-not-exist';
+    seedReauthState('reauth-state-4', nonExistentId);
+
+    axios.post.mockResolvedValue({
+      data: { access_token: 'at4', refresh_token: 'rt4', expires_in: 3600, scope: ALL_SCOPES.join(' ') },
+    });
+    axios.get.mockResolvedValue({
+      data: [{ id: 'cloud-xyz', name: 'XYZ', url: 'https://xyz.atlassian.net', scopes: ALL_SCOPES }],
+    });
+
+    const res = await request(app)
+      .get('/api/v1/oauth/express/callback')
+      .query({ code: 'reauth-code-4', state: 'reauth-state-4' })
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('CONNECTION_NOT_FOUND');
+    expect(res.headers.location).toContain('status=error');
   });
 });

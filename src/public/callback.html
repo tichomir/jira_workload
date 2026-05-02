@@ -215,6 +215,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const errorCode = params.get('code');
   const errorDesc = params.get('description');
 
+  const isReauth = params.get('reauth') === 'true';
+
   if (status === 'error') {
     const messages = {
       STATE_INVALID:               'The authorization state was invalid or expired. Please try again.',
@@ -231,6 +233,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
   if (!connectionId) {
     showError('Invalid callback', 'No connection ID found in the callback URL.');
+    return;
+  }
+
+  // ── Reauthentication return path ──────────────────────────────────────────
+  // The backend sets reauth=true when updating an existing connection in-place.
+  // Skip the full setup flow and notify the opener (popup) or redirect back.
+  if (isReauth) {
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage(
+          { type: 'REAUTH_SUCCESS', connectionId },
+          window.location.origin
+        );
+      } catch (_) { /* cross-origin guard */ }
+      window.close();
+      return;
+    }
+    // Not a popup — redirect to connections page with success flag
+    window.location.href = `/connections.html?reauth=success&connectionId=${encodeURIComponent(connectionId)}`;
     return;
   }
 

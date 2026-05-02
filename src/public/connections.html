@@ -77,6 +77,7 @@
 const API = '/api/v1';
 let _deleteId = null;
 let _connections = [];
+let _reauthPopup = null;
 
 function qs(id) { return document.getElementById(id); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -138,11 +139,15 @@ function renderConnections() {
     const deleteBtn = isDeleted
       ? `<button class="btn btn-sm btn-secondary" disabled>Deleted</button>`
       : `<button class="btn btn-sm btn-warning" onclick="confirmDelete('${escHtml(c.connectionId)}', '${name}')">Delete</button>`;
+    const reconnectBtn = !isDeleted
+      ? `<button class="btn btn-sm btn-secondary" onclick="reconnect('${escHtml(c.connectionId)}')" title="Re-run OAuth consent to refresh tokens or grant missing scopes">Reconnect</button>`
+      : '';
 
     return `<tr>
       <td>
         <strong>${name}</strong>
         ${url ? `<div class="text-muted text-sm">${url}</div>` : ''}
+        ${c.boardScopeDegraded ? `<div style="margin-top:3px"><span style="font-size:10px;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:1px 6px;font-weight:600">Board scope missing</span></div>` : ''}
       </td>
       <td><span class="badge ${cls}">${label}</span></td>
       <td class="text-muted text-sm">${fmtDate(c.connectedAt)}</td>
@@ -150,6 +155,7 @@ function renderConnections() {
       <td class="actions">
         <a href="/backups.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-primary">Backups</a>
         <a href="/manage.html?connectionId=${encodeURIComponent(c.connectionId)}" class="btn btn-sm btn-secondary">Settings</a>
+        ${reconnectBtn}
         ${deleteBtn}
       </td>
     </tr>`;
@@ -178,6 +184,49 @@ function closeModal() {
   qs('modal-delete').classList.add('hidden');
   _deleteId = null;
 }
+
+async function reconnect(id) {
+  hideBanner('banner-error');
+  try {
+    const res = await fetch(`${API}/integrations/${id}/reauthenticate`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Reauthentication failed');
+
+    const w = 600, h = 700;
+    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+    _reauthPopup = window.open(
+      data.authorizationUrl,
+      'jira_reauth',
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+    if (!_reauthPopup) {
+      // Popup blocked — fall back to redirect
+      window.location.href = data.authorizationUrl;
+    }
+  } catch (e) {
+    showBanner('banner-error', 'Failed to initiate reconnection: ' + e.message);
+  }
+}
+
+window.addEventListener('message', async (event) => {
+  if (!event.data || event.data.type !== 'REAUTH_SUCCESS') return;
+  if (_reauthPopup && !_reauthPopup.closed) _reauthPopup.close();
+  _reauthPopup = null;
+  showBanner('banner-success', 'Integration reconnected successfully. Scopes and tokens have been updated.');
+  await loadConnections();
+});
+
+// Handle redirect-based reauth return (popup was blocked)
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('reauth') === 'success') {
+    showBanner('banner-success', 'Integration reconnected successfully.');
+    // Clean up URL without reloading
+    const clean = window.location.pathname;
+    history.replaceState(null, '', clean);
+  }
+});
 
 async function executeDelete() {
   if (!_deleteId) return;

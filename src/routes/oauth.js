@@ -126,9 +126,9 @@ function finalizeConnection({
   const now = new Date();
   const connectionId = uuidv4();
 
-  const boardScopeDegraded = validationResult.missingOptionalScopes.includes(
-    'read:board-scope:jira-software'
-  );
+  const boardScopeDegraded =
+    validationResult.missingOptionalScopes.includes('read:board-scope:jira-software') ||
+    validationResult.missingOptionalScopes.includes('write:board-scope:jira-software');
 
   const connection = {
     id: connectionId,
@@ -299,6 +299,78 @@ async function expressCallbackHandler(req, res) {
     return res.redirect(redirectUrl);
   }
 
+  // ── Reauthentication path: update existing connection in place ───────────
+  if (stateRecord.reauthConnectionId) {
+    const existingConnection = db.connections.get(stateRecord.reauthConnectionId);
+    if (!existingConnection) {
+      const redirectUrl = `/callback.html?status=error&code=CONNECTION_NOT_FOUND&description=Reauthentication+target+connection+not+found`;
+      return res.redirect(redirectUrl);
+    }
+
+    // Verify the cloudId still matches one of the accessible sites
+    const matchingSite = sites.find((s) => s.id === existingConnection.cloudId);
+    if (!matchingSite) {
+      const redirectUrl = `/callback.html?status=error&code=CLOUD_ID_MISMATCH&description=The+Atlassian+site+for+this+integration+is+no+longer+accessible+with+the+new+credentials`;
+      return res.redirect(redirectUrl);
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const { encrypt } = require('../services/crypto');
+
+    const boardScopeDegraded =
+      validationResult.missingOptionalScopes.includes('read:board-scope:jira-software') ||
+      validationResult.missingOptionalScopes.includes('write:board-scope:jira-software');
+
+    // Update tokens and scopes in place — UUID and all history preserved
+    existingConnection.accessToken = encrypt(access_token);
+    existingConnection.refreshToken = encrypt(refresh_token);
+    existingConnection.accessTokenExpiresAt = new Date(now.getTime() + expires_in * 1000).toISOString();
+    existingConnection.refreshTokenLastUsedAt = nowIso;
+    existingConnection.grantedScopes = grantedScopes;
+    existingConnection.missingRequiredScopes = validationResult.missingRequiredScopes;
+    existingConnection.boardScopeDegraded = boardScopeDegraded;
+    existingConnection.status = boardScopeDegraded ? 'degraded' : 'active';
+    // Clear cloudId-not-found flag if it was set
+    if (existingConnection.cloudIdVerifiedAt !== undefined) {
+      existingConnection.cloudIdVerifiedAt = nowIso;
+    }
+    existingConnection.updatedAt = nowIso;
+    db.connections.set(existingConnection.id, existingConnection);
+
+    // Update cached CloudSite entry for this connection
+    for (const [key, cloudSite] of db.cloudSites.entries()) {
+      if (cloudSite.connectionId === existingConnection.id) {
+        cloudSite.availableScopes = matchingSite.scopes || [];
+        cloudSite.resolvedAt = nowIso;
+        cloudSite.cacheExpiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+        cloudSite.updatedAt = nowIso;
+        db.cloudSites.set(key, cloudSite);
+        break;
+      }
+    }
+
+    // Emit REAUTH lifecycle event (audit log)
+    const reauthEvent = {
+      id: uuidv4(),
+      connectionId: existingConnection.id,
+      eventType: 'REAUTH',
+      actorUserId: stateRecord.userId,
+      metadata: {
+        boardScopeDegraded,
+        grantedScopes,
+        missingRequiredScopes: validationResult.missingRequiredScopes,
+        missingOptionalScopes: validationResult.missingOptionalScopes,
+      },
+      occurredAt: nowIso,
+    };
+    db.lifecycleEvents.set(reauthEvent.id, reauthEvent);
+
+    const redirectUrl = `/callback.html?connectionId=${existingConnection.id}&status=success&reauth=true`;
+    return res.redirect(redirectUrl);
+  }
+
+  // ── Normal new-connection path ───────────────────────────────────────────
   if (sites.length === 1) {
     const site = sites[0];
     const connection = finalizeConnection({

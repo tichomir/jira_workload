@@ -294,6 +294,121 @@ function checkAttachmentSize(basketItems) {
   );
 }
 
+// ── Check 0: Granted Scope Completeness ──────────────────────────────────────
+
+/**
+ * Required scopes per restore object type.
+ * Each entry: { scope, stage, errorCode? }
+ * errorCode defaults to 'SCOPE_MISSING' unless overridden.
+ */
+const RESTORE_SCOPE_REQUIREMENTS = {
+  issue: [
+    { scope: 'write:jira-work',  stage: 'Stage 3 — issue create/update' },
+    { scope: 'write:issue:jira', stage: 'Stage 3 — issue create/update' },
+  ],
+  comment: [
+    { scope: 'write:jira-work', stage: 'Stage 4a — comment restore' },
+  ],
+  attachment: [
+    { scope: 'write:jira-work', stage: 'Stage 4a — attachment upload' },
+  ],
+  project: [
+    { scope: 'write:project:jira',  stage: 'Stage 2 — project create/update' },
+    { scope: 'manage:jira-project', stage: 'Stage 2 — project config restore' },
+  ],
+  workflow: [
+    { scope: 'manage:jira-configuration', stage: 'Stage 1 — workflow restore (full definition)' },
+  ],
+  customFieldDefinition: [
+    { scope: 'write:field:jira', stage: 'Stage 1 — custom field definition restore' },
+  ],
+  customFieldContext: [
+    { scope: 'write:field:jira', stage: 'Stage 1 — custom field context restore' },
+  ],
+  board: [
+    { scope: 'write:board-scope:jira-software', stage: 'Stage 4b — board create/update', errorCode: 'BOARD_WRITE_SCOPE_MISSING' },
+  ],
+  sprint: [
+    { scope: 'write:board-scope:jira-software', stage: 'Stage 5 — sprint create on board',            errorCode: 'BOARD_WRITE_SCOPE_MISSING' },
+    { scope: 'write:sprint:jira-software',       stage: 'Stage 5 — sprint create and sprint→issue assignment' },
+  ],
+};
+
+/**
+ * Pre-flight check: verify that the integration's granted scopes cover every
+ * object type present in the restore basket.
+ *
+ * Returns a blocking error result the first time a missing scope is detected.
+ * The result payload includes structured fields: missing_scope, target_site,
+ * required_for_stage — consumed by the frontend scope-error banner.
+ *
+ * @param {string}   targetSiteId
+ * @param {object[]} basketItems
+ * @param {string}   [connectionId]  - Preferred lookup key; falls back to targetSiteId match.
+ */
+function checkGrantedScopes(targetSiteId, basketItems, connectionId) {
+  const CHECK_ID = 'GRANTED_SCOPES';
+  const CHECK_NAME = 'Granted Scope Completeness';
+
+  // No connections in db → simulation / unit-test context without connection seed; skip check.
+  if (db.connections.size === 0) {
+    return makeCheckResult(CHECK_ID, CHECK_NAME, true, true);
+  }
+
+  // Resolve granted scopes from the connection.
+  // Only enforce when grantedScopes is an explicitly populated array; if the field is
+  // absent or the connection cannot be found, skip the check to avoid false positives
+  // against older integrations or test fixtures that pre-date scope tracking.
+  let grantedScopes = null;
+  if (connectionId) {
+    const conn = db.connections.get(connectionId);
+    if (conn && !conn.deletedAt && Array.isArray(conn.grantedScopes) && conn.grantedScopes.length > 0) {
+      grantedScopes = conn.grantedScopes;
+    }
+  }
+  if (!grantedScopes) {
+    for (const conn of db.connections.values()) {
+      if (conn.deletedAt) continue;
+      if (
+        (conn.cloudId === targetSiteId || conn.siteId === targetSiteId) &&
+        Array.isArray(conn.grantedScopes) && conn.grantedScopes.length > 0
+      ) {
+        grantedScopes = conn.grantedScopes;
+        break;
+      }
+    }
+  }
+
+  // Connection found but grantedScopes not explicitly populated → skip check; pass to avoid false positives.
+  if (!grantedScopes) {
+    return makeCheckResult(CHECK_ID, CHECK_NAME, true, true);
+  }
+
+  const grantedSet = new Set(grantedScopes);
+  const presentTypes = new Set(basketItems.map((i) => i.objectType));
+
+  for (const [objectType, requirements] of Object.entries(RESTORE_SCOPE_REQUIREMENTS)) {
+    if (!presentTypes.has(objectType)) continue;
+    for (const { scope, stage, errorCode } of requirements) {
+      if (!grantedSet.has(scope)) {
+        const code = errorCode || 'SCOPE_MISSING';
+        const result = makeCheckResult(
+          CHECK_ID, CHECK_NAME, false, true,
+          code,
+          `The Atlassian integration is missing the ${scope} scope required for ${stage} on target site ${targetSiteId}. Please reconnect the integration to grant this scope.`,
+        );
+        // Attach structured fields for frontend consumption.
+        result.missing_scope = scope;
+        result.target_site = targetSiteId;
+        result.required_for_stage = stage;
+        return result;
+      }
+    }
+  }
+
+  return makeCheckResult(CHECK_ID, CHECK_NAME, true, true);
+}
+
 // ── Pipeline ──────────────────────────────────────────────────────────────────
 
 /**
@@ -321,6 +436,12 @@ function runValidationPipeline({ restoreRequest, targetSiteId, targetProjectKey,
   const check1 = checkOAuthTokenValidity(targetSiteId);
   console.info(`[validation] check=OAUTH_TOKEN_VALIDITY passed=${check1.passed} targetSiteId=${targetSiteId}${check1.errorCode ? ' errorCode=' + check1.errorCode : ''}`);
   if (!check1.passed) return { passed: false, blockingError: check1, warnings };
+
+  // Check 1b: Granted scope completeness (pre-flight, blocking)
+  const connectionId = restoreRequest && restoreRequest.connectionId;
+  const checkScopes = checkGrantedScopes(targetSiteId, basketItems, connectionId);
+  console.info(`[validation] check=GRANTED_SCOPES passed=${checkScopes.passed} targetSiteId=${targetSiteId}${checkScopes.errorCode ? ' errorCode=' + checkScopes.errorCode : ''}`);
+  if (!checkScopes.passed) return { passed: false, blockingError: checkScopes, warnings };
 
   // Check 2: Target project existence
   const check2 = checkTargetProjectExistence(targetProjectKey, targetSiteId, restoreMode);
@@ -370,4 +491,5 @@ module.exports = {
   checkWorkflowStatusNames,
   checkCustomFieldPresence,
   checkAttachmentSize,
+  checkGrantedScopes,
 };

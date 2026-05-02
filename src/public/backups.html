@@ -80,7 +80,7 @@
       <div class="banner-title">Board &amp; Sprint restore requires reconnection</div>
       <div class="banner-msg" id="reconnect-msg"></div>
       <div style="margin-top:8px">
-        <a href="/connections.html" class="btn btn-sm btn-primary">Reconnect Integration</a>
+        <button class="btn btn-sm btn-primary" onclick="initiateReauth()">Reconnect Integration</button>
       </div>
     </div>
     <button class="banner-close" onclick="qs('banner-reconnect').classList.add('hidden')">×</button>
@@ -183,6 +183,7 @@ let _pollInterval = null;
 let _restorePollInterval = null;
 let _elapsedTimer = null;
 let _jobStartMs = null;
+let _reauthPopup = null;
 
 function qs(id) { return document.getElementById(id); }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -339,6 +340,35 @@ function showReconnectBanner(authError) {
   banner.classList.remove('hidden');
 }
 
+async function initiateReauth() {
+  if (!_connectionId) return;
+  try {
+    const res = await fetch(`${API}/integrations/${_connectionId}/reauthenticate`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Reauthentication failed');
+    const w = 600, h = 700;
+    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+    _reauthPopup = window.open(
+      data.authorizationUrl,
+      'jira_reauth',
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+    if (!_reauthPopup) { window.location.href = data.authorizationUrl; }
+  } catch (e) {
+    showTriggerBanner('error', 'Reconnect failed', e.message);
+  }
+}
+
+window.addEventListener('message', async (event) => {
+  if (!event.data || event.data.type !== 'REAUTH_SUCCESS') return;
+  if (_reauthPopup && !_reauthPopup.closed) _reauthPopup.close();
+  _reauthPopup = null;
+  qs('banner-reconnect').classList.add('hidden');
+  await loadConnection();
+  showTriggerBanner('success', 'Reconnected', 'Integration reconnected successfully. Scopes and tokens have been updated.');
+});
+
 // ── Render validation failure rows ────────────────────────────────────────
 function renderValidationFailures(failures) {
   if (!failures || !failures.length) return '';
@@ -426,12 +456,17 @@ function showJobSummaryCard(job, progress, isRestore) {
         const keyLabel = item.originalKey || item.id || '—';
         const detailId = `failed-item-detail-${idx}`;
         const targetLabel = item.targetKey || '—';
+        const isScopeMissing = item.errorCode && item.errorCode.endsWith('_SCOPE_MISSING');
+        const reconnectInline = isScopeMissing
+          ? `<button onclick="initiateReauth()" style="background:none;border:1px solid var(--primary);border-radius:4px;cursor:pointer;color:var(--primary);font-size:10px;padding:1px 8px;flex-shrink:0;font-weight:600">Reconnect to grant scope</button>`
+          : '';
         return `<div style="font-size:11px;border-top:1px solid var(--border);padding:4px 0">
           <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
             <span style="color:var(--danger);font-size:10px;flex-shrink:0">✖</span>
             <span style="font-family:'SFMono-Regular',Consolas,monospace;color:var(--text);font-weight:600">${escHtml(keyLabel)}</span>
             <span style="color:var(--text-muted);font-family:'SFMono-Regular',Consolas,monospace">${escHtml(item.errorCode || '')}</span>
             <span style="color:var(--danger)">— ${escHtml(reason)}</span>
+            ${reconnectInline}
             <button onclick="toggleFailedDetail('${escHtml(detailId)}')" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--primary);font-size:10px;padding:1px 6px;margin-left:auto;flex-shrink:0">Details</button>
           </div>
           <div id="${escHtml(detailId)}" style="display:none;margin-top:4px;padding:4px 8px;background:var(--bg);border-radius:4px;border:1px solid var(--border)">

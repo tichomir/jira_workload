@@ -6,11 +6,20 @@
  *   DELETE /integrations/:id               - Soft or Hard delete integration
  *   POST   /integrations/:id/restore       - Restore soft-deleted integration
  *   PATCH  /integrations/:id/project-scope - Update project scope configuration
+ *   POST   /integrations/:id/reauthenticate - Re-run OAuth consent (refresh scopes/tokens in place)
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
+const { generateCodeVerifier, generateCodeChallenge } = require('../services/pkce');
+const { getScopeString } = require('../services/scopeValidation');
+
+const ATLASSIAN_AUTH_URL = 'https://auth.atlassian.com/authorize';
+const DEFAULT_CLIENT_ID = process.env.ATLASSIAN_CLIENT_ID;
+const DEFAULT_REDIRECT_URI = process.env.ATLASSIAN_REDIRECT_URI;
+const STATE_TTL_SECONDS = parseInt(process.env.OAUTH_STATE_TTL_SECONDS || '600', 10);
 
 const router = express.Router();
 
@@ -317,6 +326,73 @@ router.patch('/:id/project-scope', (req, res) => {
     includeArchivedProjects: connection.includeArchivedProjects,
     updatedAt: connection.updatedAt,
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /integrations/:id/reauthenticate
+// Initiates an in-place OAuth re-consent for the existing integration.
+// Returns the Atlassian authorization URL; the callback handler updates tokens
+// on the SAME connection record (UUID preserved).
+// ---------------------------------------------------------------------------
+router.post('/:id/reauthenticate', (req, res) => {
+  const connectionId = req.params.id;
+  const connection = db.connections.get(connectionId);
+
+  if (!connection) {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'No connection found with this ID');
+  }
+
+  if (connection.status === 'hard_deleted') {
+    return errorResponse(res, 404, 'CONNECTION_NOT_FOUND', 'Connection has been deleted');
+  }
+
+  // Use the clientId from the connection (Manual path) or fall back to global env (Express path)
+  const clientId = connection.clientId || DEFAULT_CLIENT_ID;
+  const redirectUri = DEFAULT_REDIRECT_URI;
+
+  if (!clientId) {
+    return errorResponse(res, 500, 'MISSING_CLIENT_ID', 'OAuth client ID is not configured');
+  }
+  if (!redirectUri) {
+    return errorResponse(res, 500, 'MISSING_REDIRECT_URI', 'OAuth redirect URI is not configured');
+  }
+
+  let codeVerifier, codeChallenge;
+  try {
+    codeVerifier = generateCodeVerifier();
+    codeChallenge = generateCodeChallenge(codeVerifier);
+  } catch (err) {
+    return errorResponse(res, 500, 'PKCE_GENERATION_FAILED', 'Failed to generate PKCE parameters');
+  }
+
+  const state = uuidv4();
+  const expiresAt = new Date(Date.now() + STATE_TTL_SECONDS * 1000).toISOString();
+
+  // Store state with a marker so the callback knows to UPDATE the existing connection
+  db.pendingStates.set(state, {
+    state,
+    codeVerifier,
+    userId: connection.userId,
+    redirectUri,
+    path: connection.connectionPath || 'express',
+    reauthConnectionId: connectionId,  // key: signals in-place update
+    expiresAt,
+  });
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: getScopeString(),
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    prompt: 'consent',
+    audience: 'api.atlassian.com',
+  });
+  const authorizationUrl = `${ATLASSIAN_AUTH_URL}?${params.toString()}`;
+
+  return res.status(200).json({ authorizationUrl, state, expiresAt, connectionId });
 });
 
 module.exports = router;

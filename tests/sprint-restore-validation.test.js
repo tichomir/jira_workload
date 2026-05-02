@@ -66,7 +66,12 @@ function seedConnection(overrides = {}) {
     cloudId: 'cloud-restore-test',
     accessToken: 'tok-valid',
     accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
-    grantedScopes: ['read:board-scope:jira-software'],
+    grantedScopes: [
+      'read:jira-work', 'read:jira-user', 'read:board-scope:jira-software',
+      'write:jira-work', 'write:issue:jira', 'write:project:jira',
+      'manage:jira-project', 'manage:jira-configuration', 'write:field:jira',
+      'write:board-scope:jira-software', 'write:sprint:jira-software', 'offline_access',
+    ],
     deletedAt: null,
     ...overrides,
     id, // ensure id is not overwritten by spread
