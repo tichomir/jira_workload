@@ -3054,3 +3054,70 @@ Fix it !
 - ✅ Fix: pre-existing failing test (sprint18) should be investigated and resolved — Backend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 20 — Fix Issue Restore: MISSING_PROJECT_KEY & Comment Revert | 2026-05-02 | ⏳ in progress | 16 SP est.
+**Goal:** Restore operations are still not working. 
+I am getting resposne from a restore operation as: 
+
+Restore completed with errors
+Restore completed with 5 failures — 15 restored, 47 skipped
+›
+issue 10035MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10073MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10074MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10075MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10076MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+×
+⚠
+Restore completed with errors
+Job 4976b3d5-8c74-402e-a6f6-738edac83530 · May 2, 2026, 1:06 AM
+Restored: 15
+Skipped: 47
+Failed: 5
+
+I don't know what the missing keys are, but even simple edits that I did of an issue - added a comment after the backup was created - are not woring. I was expecting to have the comment removed after a restore, but it did not happen - this is project KS (KANBAN_SPACE) and I was testing wtih issue with id - testr1
+
+_Sprint started. Role checkpoints below will update as work completes._
+
+---
+### Sprint 20 — Fix Issue Restore: MISSING_PROJECT_KEY & Comment Revert | 2026-05-02 | ◐ Software Architect checkpoint (0/1 done)
+
+- ❌ Diagnose MISSING_PROJECT_KEY and comment-not-reverted root causes (◈ Standard, 3 SP)
+
+---
+### Sprint 20 — Fix Issue Restore: MISSING_PROJECT_KEY & Comment Revert | 2026-05-02 | 📋 reviewing | 16 SP
+**Goal:** Restore operations are still not working. 
+I am getting resposne from a restore operation as: 
+
+Restore completed with errors
+Restore completed with 5 failures — 15 restored, 47 skipped
+›
+issue 10035MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10073MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10074MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10075MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10076MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+×
+⚠
+Restore completed with errors
+Job 4976b3d5-8c74-402e-a6f6-738edac83530 · May 2, 2026, 1:06 AM
+Restored: 15
+Skipped: 47
+Failed: 5
+
+I don't know what the missing keys are, but even simple edits that I did of an issue - added a comment after the backup was created - are not woring. I was expecting to have the comment removed after a restore, but it did not happen - this is project KS (KANBAN_SPACE) and I was testing wtih issue with id - testr1
+
+**Delivered:**
+- ❌ Diagnose MISSING_PROJECT_KEY and comment-not-reverted root causes — Software Architect (◈ Standard, 3 SP)
+- ⏭ Fix MISSING_PROJECT_KEY: resolve project key for issues when project is skipped on conflict — Backend Developer (◉ Deep, 5 SP)
+- ⏭ Fix issue comment restore: delete post-backup comments before writing backed-up comments — Backend Developer (◉ Deep, 5 SP)
+- ⏭ QA: end-to-end restore correctness — MISSING_PROJECT_KEY fix and comment revert — Qa Engineer (◈ Standard, 3 SP)
+
+---
