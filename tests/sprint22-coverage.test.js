@@ -351,8 +351,8 @@ describe('TC-5: Custom fields included in issue create payload for same-site res
       key: 'TS-8',
       summary: 'Custom fields test',
       project: { key: 'TS' },
-      customfield_10001: 'sprint-A',
-      customfield_10002: { value: 'High' },
+      customfield_10050: 'sprint-A',   // writable text custom field (not in excluded list)
+      customfield_10002: { value: 'High' }, // object without 'id' — writable, not option-typed
       customfield_10003: null, // null — should be excluded
     });
 
@@ -394,8 +394,8 @@ describe('TC-5: Custom fields included in issue create payload for same-site res
     expect(issuePosts.length).toBeGreaterThanOrEqual(1);
     const issueFields = issuePosts[0].payload.fields;
 
-    // Non-null custom fields are included
-    expect(issueFields.customfield_10001).toBe('sprint-A');
+    // Non-null custom fields are included (using non-excluded field IDs)
+    expect(issueFields.customfield_10050).toBe('sprint-A');
     expect(issueFields.customfield_10002).toEqual({ value: 'High' });
     // Null custom fields are excluded
     expect(issueFields).not.toHaveProperty('customfield_10003');
@@ -416,7 +416,7 @@ describe('TC-6: 400 on issue create retries without custom fields', () => {
       key: 'TS-9',
       summary: 'Retry test',
       project: { key: 'TS' },
-      customfield_10001: 'bad-field-value',
+      customfield_10050: 'bad-field-value', // non-excluded writable field that triggers 400 on first attempt
     });
 
     const capturedPayloads = [];
@@ -484,7 +484,7 @@ describe('TC-6: 400 on issue create retries without custom fields', () => {
       p.url.includes('/rest/api/3/issue') && !p.url.includes('/comment'));
     expect(issuePosts.length).toBe(2);
     const fallbackPayload = issuePosts[1].payload;
-    expect(fallbackPayload.fields).not.toHaveProperty('customfield_10001');
+    expect(fallbackPayload.fields).not.toHaveProperty('customfield_10050');
     // But still has the prefixed summary
     expect(fallbackPayload.fields.summary).toMatch(/^\[Restored from TS-9\]/);
   });

@@ -1158,10 +1158,10 @@ describe('Integration — full five-stage pipeline', () => {
     const bp = 'bp-e2e-crosssite';
     seedSnapshot(bp, 'JiraIssueNode', 'issue-cs-1', {
       key: 'CS-1', summary: 'Cross-site issue',
-      customfield_10001: 'sprint-123',
+      customfield_10050: 'sprint-123',
     });
     // Define matching fields on both sites
-    db.customFieldDefinitions.set('site-a:customfield_10001', { cloudId: 'site-a', fieldId: 'customfield_10001', name: 'Sprint' });
+    db.customFieldDefinitions.set('site-a:customfield_10050', { cloudId: 'site-a', fieldId: 'customfield_10050', name: 'Sprint' });
     db.customFieldDefinitions.set('site-b:customfield_20001', { cloudId: 'site-b', fieldId: 'customfield_20001', name: 'Sprint' });
 
     const req = makeBasicRestoreRequest({
@@ -1178,7 +1178,7 @@ describe('Integration — full five-stage pipeline', () => {
     expect(restoredIssue).toBeDefined();
     // The field should now use the target field ID
     expect(restoredIssue.payload.fields['customfield_20001']).toBe('sprint-123');
-    expect(restoredIssue.payload.fields['customfield_10001']).toBeUndefined();
+    expect(restoredIssue.payload.fields['customfield_10050']).toBeUndefined();
   });
 
   test('API constraint: issue gets original-key label in full pipeline', async () => {

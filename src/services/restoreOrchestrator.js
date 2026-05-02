@@ -32,6 +32,19 @@ const {
 
 const JIRA_API_BASE = 'https://api.atlassian.com/ex/jira';
 
+// ── Custom field sanitization ─────────────────────────────────────────────────
+// Fields that are NEVER writable via POST /rest/api/3/issue regardless of context.
+// Sending these causes a 400 from Jira because they are system-managed, read-only,
+// or must be set via a separate API call after issue creation.
+const EXCLUDED_CUSTOM_FIELDS = new Set([
+  'customfield_10019', // Rank / Global Rank — system-calculated, not settable
+  'customfield_10020', // Sprint — must be set via POST /rest/agile/1.0/sprint/{id}/issue after create
+  'customfield_10014', // Epic Link — deprecated; use 'parent' field or Epic type instead
+  'customfield_10000', // Development field — read-only, managed by Jira dev integrations
+  'customfield_10001', // Team — managed by Advanced Roadmaps, not directly settable
+  'customfield_10018', // Story Point Estimate (legacy alias) — read-only alias for story points
+]);
+
 // ── Error codes that indicate a "skip" rather than a hard failure ─────────────
 // These errors mean the item cannot be restored for a structural reason (e.g.
 // system fields cannot be created via the Jira API) but should not count toward
@@ -232,14 +245,38 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         throw Object.assign(new Error('Cannot restore issue: no target project key available'), { code: 'MISSING_PROJECT_KEY' });
       }
 
-      // Include all non-null custom fields from the backup for both same-site and cross-site restores.
+      // Include custom fields from the backup, applying sanitization rules:
+      // 1. Skip permanently-excluded system/read-only fields (EXCLUDED_CUSTOM_FIELDS).
+      // 2. Skip option-typed fields (value is an object with an 'id' property) — option IDs are
+      //    context-scoped and won't match target project's field context; safe writable numeric
+      //    or text custom fields (string/number values) are kept.
       // For cross-site, apply the field ID mapping (fieldMap); for same-site, use the original key.
+      const strippedSanitizedFields = [];
       let customFields = {};
       for (const [k, v] of Object.entries(fields)) {
-        if (k.startsWith('customfield_') && v !== null && v !== undefined) {
-          const mappedKey = (destination.isCrossSite && fieldMap && fieldMap[k]) ? fieldMap[k] : k;
-          customFields[mappedKey] = v;
+        if (!k.startsWith('customfield_') || v === null || v === undefined) continue;
+        // Rule 1: skip permanently excluded system fields
+        if (EXCLUDED_CUSTOM_FIELDS.has(k)) {
+          strippedSanitizedFields.push(`${k}(system-excluded)`);
+          continue;
         }
+        // Rule 2: skip option-typed fields (single-select, multi-select, cascading select)
+        // where the backed-up value is an object with an 'id' key — option IDs are context-scoped
+        // and will cause 400 on the target unless a field-mapping step has confirmed equivalence.
+        if (typeof v === 'object' && !Array.isArray(v) && v !== null && 'id' in v) {
+          strippedSanitizedFields.push(`${k}(option-typed)`);
+          continue;
+        }
+        // Rule 2b: array of option objects (multi-select)
+        if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && v[0] !== null && 'id' in v[0]) {
+          strippedSanitizedFields.push(`${k}(option-array)`);
+          continue;
+        }
+        const mappedKey = (destination.isCrossSite && fieldMap && fieldMap[k]) ? fieldMap[k] : k;
+        customFields[mappedKey] = v;
+      }
+      if (strippedSanitizedFields.length > 0) {
+        console.info(`[restore] Issue ${issueKeyStr}: sanitized ${strippedSanitizedFields.length} custom fields before create: ${strippedSanitizedFields.join(', ')}`);
       }
 
       // Build prefixed summary: "[Restored from ORIG-KEY] original summary" (ADR-S22-004)
@@ -369,21 +406,52 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
 
       // Issue does not exist — create it (retry without custom fields if 400 from field validation)
       let resp;
+      let customFieldsAppliedOnCreate = true;
       try {
         resp = await jiraAxios.post(`${base}/rest/api/3/issue`, issuePayload);
       } catch (createErr) {
-        if (createErr.isAxiosError && createErr.response && createErr.response.status === 400 && Object.keys(customFields).length > 0) {
-          console.warn(`[restore] Issue create with custom fields failed (400), retrying without custom fields for ${issueKeyStr}: ${createErr.message}`);
-          const fallbackPayload = { fields: { ...issuePayload.fields } };
-          for (const k of Object.keys(customFields)) {
-            delete fallbackPayload.fields[k];
+        if (createErr.isAxiosError && createErr.response && createErr.response.status === 400) {
+          // Log the full 400 error body from Jira to identify the exact field causing rejection
+          const errDetail = createErr.response.data;
+          console.warn(`[restore] Issue create 400 detail for ${issueKeyStr}: ${JSON.stringify(errDetail)}`);
+          if (Object.keys(customFields).length > 0) {
+            const removedFields = Object.keys(customFields);
+            console.warn(`[restore] Issue create with custom fields failed (400), retrying without custom fields for ${issueKeyStr}. Removed fields: ${removedFields.join(', ')}`);
+            const fallbackPayload = { fields: { ...issuePayload.fields } };
+            // Preserve Epic Name (customfield_10011) for Epic issue type — Jira requires it on create
+            const isEpic = fields.issuetype && (fields.issuetype.name === 'Epic' || fields.issuetype.subtask === false);
+            for (const k of Object.keys(customFields)) {
+              if (isEpic && k === 'customfield_10011') continue; // preserve Epic Name required for Epic type
+              delete fallbackPayload.fields[k];
+            }
+            resp = await jiraAxios.post(`${base}/rest/api/3/issue`, fallbackPayload);
+            customFieldsAppliedOnCreate = false;
+          } else {
+            throw createErr;
           }
-          resp = await jiraAxios.post(`${base}/rest/api/3/issue`, fallbackPayload);
         } else {
           throw createErr;
         }
       }
       const newKey = resp.data.key;
+
+      // Per-field PUT fallback: if custom fields were stripped on retry, attempt to add each
+      // custom field one-by-one via PUT to identify which specific field causes failure.
+      // Fields that succeed are applied; the exact failing field is logged.
+      if (!customFieldsAppliedOnCreate && Object.keys(customFields).length > 0 && newKey) {
+        console.info(`[restore] Issue ${newKey} created without custom fields — attempting per-field PUT fallback for ${Object.keys(customFields).length} fields`);
+        for (const [cfKey, cfValue] of Object.entries(customFields)) {
+          // Skip Epic Name if already included on create (preserved for Epics)
+          if (cfKey === 'customfield_10011') continue;
+          try {
+            await jiraAxios.put(`${base}/rest/api/3/issue/${newKey}`, { fields: { [cfKey]: cfValue } });
+            console.info(`[restore] Issue ${newKey}: per-field PUT succeeded for ${cfKey}`);
+          } catch (putErr) {
+            const putDetail = putErr.response && putErr.response.data ? JSON.stringify(putErr.response.data) : putErr.message;
+            console.warn(`[restore] Issue ${newKey}: per-field PUT FAILED for ${cfKey}: ${putDetail}`);
+          }
+        }
+      }
 
       // Post backed-up comments to the newly created issue
       if (backedUpComments.length > 0 && newKey) {
@@ -515,8 +583,13 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         const resp = await jiraAxios.post(`${base}/rest/agile/1.0/board`, boardPayload);
         return { targetId: String(resp.data.id) };
       } catch (err) {
-        if (err.isAxiosError && err.response && (err.response.status === 400 || err.response.status === 403)) {
-          console.warn(`[restore] Board create failed (${err.response.status}), skipping: ${err.message}`);
+        // 400: bad request, 401: missing write:board-scope:jira-software OAuth scope,
+        // 403: forbidden — all are skipped gracefully; boards are optional restore artifacts.
+        if (err.isAxiosError && err.response && [400, 401, 403].includes(err.response.status)) {
+          const scopeHint = err.response.status === 401
+            ? ' (missing write:board-scope:jira-software OAuth scope — re-authorise to enable board restore)'
+            : '';
+          console.warn(`[restore] Board create failed (${err.response.status}), skipping${scopeHint}: ${err.message}`);
           return { targetId: uuidv4(), skipped: true };
         }
         throw err;
@@ -1090,6 +1163,30 @@ async function initiateRestore(restoreRequest) {
     }
   }
 
+  // Detect AUTH_ERROR in board/sprint stages and surface a structured RECONNECT_REQUIRED error.
+  // Board/sprint items are in stages 4 and 5 (COMMENTS_ATTACHMENTS_BOARDS and SPRINTS).
+  const BOARD_SPRINT_STAGES = new Set([
+    RESTORE_STAGE_ORDER.COMMENTS_ATTACHMENTS_BOARDS,
+    RESTORE_STAGE_ORDER.SPRINTS,
+  ]);
+  const authErrorItems = [];
+  for (const stage of job.stageResults) {
+    if (!BOARD_SPRINT_STAGES.has(stage.stageNumber)) continue;
+    for (const item of stage.items || []) {
+      if (item.errorCode === 'AUTH_ERROR' && (item.objectType === 'board' || item.objectType === 'sprint')) {
+        authErrorItems.push({ objectType: item.objectType, id: item.id });
+      }
+    }
+  }
+  if (authErrorItems.length > 0) {
+    job.authError = {
+      code: 'RECONNECT_REQUIRED',
+      connectionId,
+      detail: 'Atlassian rejected the access token for board/sprint writes. The integration may be missing write:board-scope:jira-software or the token has been permanently revoked. Please reconnect the integration.',
+      affectedItems: authErrorItems,
+    };
+  }
+
   // Finalize job status based on counts
   if (job.pendingConflicts.length > 0) {
     job.status = 'running';
@@ -1215,6 +1312,9 @@ function buildRestoreResponse(job) {
   }
   if (job.failedCount > 0 && job.failureMessages && job.failureMessages.length > 0) {
     response.errors = job.failureMessages;
+  }
+  if (job.authError) {
+    response.authError = job.authError;
   }
   return response;
 }

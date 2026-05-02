@@ -73,6 +73,19 @@
     <button class="banner-close" onclick="hideRestoreBanner()">×</button>
   </div>
 
+  <!-- Auth error reconnect banner (board/sprint stage AUTH_ERROR) -->
+  <div id="banner-reconnect" class="banner banner-amber hidden">
+    <span class="banner-icon">⚠</span>
+    <div class="banner-body">
+      <div class="banner-title">Board &amp; Sprint restore requires reconnection</div>
+      <div class="banner-msg" id="reconnect-msg"></div>
+      <div style="margin-top:8px">
+        <a href="/connections.html" class="btn btn-sm btn-primary">Reconnect Integration</a>
+      </div>
+    </div>
+    <button class="banner-close" onclick="qs('banner-reconnect').classList.add('hidden')">×</button>
+  </div>
+
   <!-- Live job progress panel (backup & restore share same structure) -->
   <div id="job-progress-panel" class="card hidden" style="border-left:4px solid var(--primary)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -289,6 +302,43 @@ function updateProgressPanel(progress) {
   }
 }
 
+// ── Restore error code → human-readable reason ────────────────────────────
+function restoreErrorReason(errorCode) {
+  const map = {
+    JIRA_API_400: 'Jira rejected the request (400 — invalid field or value)',
+    AUTH_ERROR: 'Authentication error — token rejected by Atlassian',
+    RECONNECT_REQUIRED: 'Reconnect required — token rejected by Atlassian',
+    MISSING_PROJECT_KEY: 'Project key could not be resolved',
+    WORKFLOW_DEFINITION_MISSING: 'Workflow definition missing from backup',
+    SYSTEM_FIELD_SKIP: 'System-managed field skipped',
+    CUSTOM_FIELD_REQUIRED_MISSING: 'Required custom field not found on target site',
+    CUSTOM_FIELD_OPTIONAL_MISSING: 'Optional custom field not found on target site',
+    ATTACHMENT_SIZE_EXCEEDED: 'Attachment exceeds 250 MB limit',
+    TARGET_PROJECT_NOT_FOUND: 'Target project not found',
+    TARGET_PROJECT_ARCHIVED: 'Target project is archived',
+    OAUTH_TOKEN_INVALID: 'OAuth token is invalid or expired',
+    BOARD_WRITE_SCOPE_MISSING: 'Board write scope missing — reconnect to grant scope',
+    JIRA_SOFTWARE_NOT_ACTIVE: 'Jira Software not active on target site',
+  };
+  if (!errorCode) return 'Unknown error';
+  return map[errorCode] || errorCode.replace(/_/g, ' ').toLowerCase();
+}
+
+function toggleFailedDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function showReconnectBanner(authError) {
+  const banner = qs('banner-reconnect');
+  if (!banner) return;
+  const detail = (authError && authError.detail)
+    || 'Atlassian rejected the board/sprint write token. Please reconnect the integration to restore boards and sprints.';
+  qs('reconnect-msg').textContent = detail;
+  banner.classList.remove('hidden');
+}
+
 // ── Render validation failure rows ────────────────────────────────────────
 function renderValidationFailures(failures) {
   if (!failures || !failures.length) return '';
@@ -362,6 +412,46 @@ function showJobSummaryCard(job, progress, isRestore) {
         `<div style="font-size:11px;color:var(--text-muted);font-family:'SFMono-Regular',Consolas,monospace">${escHtml(i.targetKey)} ← restored from ${escHtml(i.originalKey)}</div>`
       ).join('');
       detailHtml += `<div style="margin-top:8px"><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:3px">Restored issues</div><div style="display:flex;flex-direction:column;gap:1px">${issueRows}</div>${overflow}</div>`;
+    }
+    // Failed items with expandable per-item details
+    const failedItems = allItems.filter(i => i.status === 'failed');
+    if (failedItems.length > 0) {
+      const maxShowFailed = 20;
+      const shownFailed = failedItems.slice(0, maxShowFailed);
+      const overflowFailed = failedItems.length > maxShowFailed
+        ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">…and ${failedItems.length - maxShowFailed} more failed items</div>`
+        : '';
+      const failedRows = shownFailed.map((item, idx) => {
+        const reason = restoreErrorReason(item.errorCode);
+        const keyLabel = item.originalKey || item.id || '—';
+        const detailId = `failed-item-detail-${idx}`;
+        const targetLabel = item.targetKey || '—';
+        return `<div style="font-size:11px;border-top:1px solid var(--border);padding:4px 0">
+          <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
+            <span style="color:var(--danger);font-size:10px;flex-shrink:0">✖</span>
+            <span style="font-family:'SFMono-Regular',Consolas,monospace;color:var(--text);font-weight:600">${escHtml(keyLabel)}</span>
+            <span style="color:var(--text-muted);font-family:'SFMono-Regular',Consolas,monospace">${escHtml(item.errorCode || '')}</span>
+            <span style="color:var(--danger)">— ${escHtml(reason)}</span>
+            <button onclick="toggleFailedDetail('${escHtml(detailId)}')" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--primary);font-size:10px;padding:1px 6px;margin-left:auto;flex-shrink:0">Details</button>
+          </div>
+          <div id="${escHtml(detailId)}" style="display:none;margin-top:4px;padding:4px 8px;background:var(--bg);border-radius:4px;border:1px solid var(--border)">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px">
+              <span>Original: <code style="font-size:10px;font-family:'SFMono-Regular',Consolas,monospace">${escHtml(item.originalKey || item.id || '—')}</code></span>
+              <span>Target: <code style="font-size:10px;font-family:'SFMono-Regular',Consolas,monospace">${escHtml(targetLabel)}</code></span>
+              ${item.errorCode ? `<span>Error code: <code style="font-size:10px;font-family:'SFMono-Regular',Consolas,monospace">${escHtml(item.errorCode)}</code></span>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      detailHtml += `<div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--danger);margin-bottom:2px">Failed items (${failedItems.length})</div>
+        <div style="display:flex;flex-direction:column">${failedRows}</div>
+        ${overflowFailed}
+      </div>`;
+    }
+    // AUTH_ERROR reconnect banner for board/sprint stage failures
+    if (job.authError && job.authError.code === 'RECONNECT_REQUIRED') {
+      showReconnectBanner(job.authError);
     }
   }
   if (progress) {
@@ -687,13 +777,16 @@ function pollRestoreJob(jobId) {
         _restorePollInterval = null;
         showJobSummaryCard(job, _lastRestoreProgress, true);
         _lastRestoreProgress = null;
+        if (job.authError && job.authError.code === 'RECONNECT_REQUIRED') {
+          showReconnectBanner(job.authError);
+        }
         if (job.status === 'complete_with_errors') {
           const fc = job.failedCount || 0;
           const msg = `Restore completed with ${fc} failure${fc !== 1 ? 's' : ''} — ${job.restoredCount || 0} restored, ${job.skippedCount || 0} skipped`;
           const mappedErrors = (job.errors || []).map(e => ({
             checkName: e.originalKey ? `${e.objectType || 'object'} ${e.originalKey}` : `${e.objectType || 'object'} ${e.id || ''}`,
             errorCode: e.errorCode,
-            detail: null,
+            detail: restoreErrorReason(e.errorCode),
           }));
           showRestoreBanner('amber', 'Restore completed with errors', msg, mappedErrors);
         } else if (job.status !== 'complete') {

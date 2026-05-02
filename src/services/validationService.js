@@ -132,19 +132,32 @@ function checkTargetProjectArchiveStatus(targetProjectKey, targetSiteId) {
 
 // ── Check 4: Jira Software Active ─────────────────────────────────────────────
 
-function checkJiraSoftwareActive(targetSiteId) {
+/**
+ * @param {string} targetSiteId
+ * @param {boolean} [requireWriteScope=false] — When true, also requires write:board-scope:jira-software.
+ *   Must be set for restore operations that write boards/sprints; read-only (backup) only needs the read scope.
+ */
+function checkJiraSoftwareActive(targetSiteId, requireWriteScope = false) {
   const CHECK_ID = VALIDATION_CHECK_TYPE.JIRA_SOFTWARE_ACTIVE;
   const CHECK_NAME = 'Jira Software Active';
 
-  // Check if the connection for targetSiteId has read:board-scope:jira-software scope granted.
+  // Check if the connection for targetSiteId has the required board-scope grants.
+  // Restore operations require both read and write board scope; backup only needs read.
   let active = false;
+  let missingWriteScope = false;
   for (const conn of db.connections.values()) {
     if (conn.deletedAt) continue;
     const matchesSite = conn.cloudId === targetSiteId || conn.siteId === targetSiteId;
     if (!matchesSite) continue;
     const scopes = conn.grantedScopes || conn.scopes || [];
-    if (scopes.includes('read:board-scope:jira-software')) {
+    const hasRead = scopes.includes('read:board-scope:jira-software');
+    const hasWrite = scopes.includes('write:board-scope:jira-software');
+    if (hasRead) {
       active = true;
+      if (requireWriteScope && !hasWrite) {
+        missingWriteScope = true;
+        active = false;
+      }
       break;
     }
   }
@@ -152,11 +165,19 @@ function checkJiraSoftwareActive(targetSiteId) {
   // Simulation: if no connections, assume active
   if (db.connections.size === 0) active = true;
 
-  return makeCheckResult(
-    CHECK_ID, CHECK_NAME, active, true,
-    active ? undefined : 'JIRA_SOFTWARE_NOT_ACTIVE',
-    active ? undefined : `Jira Software is not active on target site ${targetSiteId}; Board and Sprint restore requires read:board-scope:jira-software`,
-  );
+  let errorCode;
+  let detail;
+  if (!active) {
+    if (missingWriteScope) {
+      errorCode = 'BOARD_WRITE_SCOPE_MISSING';
+      detail = `The Atlassian integration is missing the write:board-scope:jira-software scope required for board and sprint restore on target site ${targetSiteId}. Please reconnect the integration to grant this scope.`;
+    } else {
+      errorCode = 'JIRA_SOFTWARE_NOT_ACTIVE';
+      detail = `Jira Software is not active on target site ${targetSiteId}; Board and Sprint restore requires read:board-scope:jira-software`;
+    }
+  }
+
+  return makeCheckResult(CHECK_ID, CHECK_NAME, active, true, errorCode, detail);
 }
 
 // ── Check 5: Workflow Status Names ────────────────────────────────────────────
@@ -311,9 +332,10 @@ function runValidationPipeline({ restoreRequest, targetSiteId, targetProjectKey,
   console.info(`[validation] check=TARGET_PROJECT_ARCHIVE_STATUS passed=${check3.passed} targetProjectKey=${targetProjectKey || '(none)'}${check3.errorCode ? ' errorCode=' + check3.errorCode : ''}`);
   if (!check3.passed) return { passed: false, blockingError: check3, warnings };
 
-  // Check 4: Jira Software active (only for Board/Sprint restores)
+  // Check 4: Jira Software active (only for Board/Sprint restores).
+  // Restore operations write boards/sprints so both read and write board scope are required.
   if (includeBoardSprintRestore) {
-    const check4 = checkJiraSoftwareActive(targetSiteId);
+    const check4 = checkJiraSoftwareActive(targetSiteId, true);
     console.info(`[validation] check=JIRA_SOFTWARE_ACTIVE passed=${check4.passed} targetSiteId=${targetSiteId}${check4.errorCode ? ' errorCode=' + check4.errorCode : ''}`);
     if (!check4.passed) return { passed: false, blockingError: check4, warnings };
   }

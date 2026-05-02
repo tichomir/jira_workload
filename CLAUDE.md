@@ -3253,3 +3253,198 @@ You are also neither backing up or restoring - boards, sprints, attachments, lin
 - ✅ Verify and complete backup/restore implementation for Boards, Sprints, Attachments, Issue Links — Backend Developer (◈ Standard, 3 SP)
 
 ---
+### Sprint 23 — Restore Reliability: Custom Fields & Auth | 2026-05-02 | ⏳ in progress | 16 SP est.
+**Goal:** Of course, restores are still not working correctly. Here is the log: 
+
+2026-05-02T11:28:09.648Z POST /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup
+[restore] pre-validation: backupPointId=aef63f48-f50a-44f6-916d-e3767a0a3ddb targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 effectiveCloudId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) basketSize=90
+[validation] starting: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) restoreMode=original basketSize=90
+[validation] check=OAUTH_TOKEN_VALIDITY passed=true targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_EXISTENCE passed=true targetProjectKey=(none) targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_ARCHIVE_STATUS passed=true targetProjectKey=(none)
+[validation] check=JIRA_SOFTWARE_ACTIVE passed=true targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=WORKFLOW_STATUS_NAMES passed=true warnings=false
+[validation] check=CUSTOM_FIELD_PRESENCE_REQUIRED passed=true
+[validation] check=ATTACHMENT_SIZE passed=true
+[validation] all checks passed: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 warnings=0
+[restore] post-validation: passed=true warnings=0
+2026-05-02T11:28:12.676Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:12.682Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-5: Request failed with status code 400
+[restore] Failed to write issue id=10077: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-6: Request failed with status code 400
+[restore] Failed to write issue id=10082: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-7: Request failed with status code 400
+[restore] Failed to write issue id=10087: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-8: Request failed with status code 400
+[restore] Failed to write issue id=10088: ERR_BAD_REQUEST — Request failed with status code 400
+2026-05-02T11:28:16.000Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:16.007Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-9: Request failed with status code 400
+[restore] Failed to write issue id=10089: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-2: Request failed with status code 400
+[restore] Failed to write issue id=10074: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-3: Request failed with status code 400
+[restore] Failed to write issue id=10075: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-4: Request failed with status code 400
+[restore] Failed to write issue id=10076: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-1: Request failed with status code 400
+[restore] Failed to write issue id=10073: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-7: Request failed with status code 400
+2026-05-02T11:28:19.008Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:19.009Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+[restore] Failed to write issue id=10080: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-8: Request failed with status code 400
+2026-05-02T11:28:19.558Z GET /health
+[restore] Failed to write issue id=10081: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-9: Request failed with status code 400
+[restore] Failed to write issue id=10083: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-10: Request failed with status code 400
+[restore] Failed to write issue id=10084: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-11: Request failed with status code 400
+[restore] Failed to write issue id=10085: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-12: Request failed with status code 400
+[restore] Failed to write issue id=10086: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-13: Request failed with status code 400
+2026-05-02T11:28:21.996Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:21.997Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Failed to write issue id=10090: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-14: Request failed with status code 400
+[restore] Failed to write issue id=10091: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-15: Request failed with status code 400
+[restore] Failed to write issue id=10092: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-16: Request failed with status code 400
+[restore] Failed to write issue id=10093: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-17: Request failed with status code 400
+[restore] Failed to write issue id=10094: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-18: Request failed with status code 400
+[restore] Failed to write issue id=10095: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-19: Request failed with status code 400
+[restore] Failed to write issue id=10096: ERR_BAD_REQUEST — Request failed with status code 400
+2026-05-02T11:28:24.991Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:24.992Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-20: Request failed with status code 400
+[restore] Failed to write issue id=10097: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-21: Request failed with status code 400
+[restore] Failed to write issue id=10098: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-22: Request failed with status code 400
+[restore] Failed to write issue id=10099: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Stage 3b (issue links): succeeded=0 failed=0
+[restore] Failed to write board id=1: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Failed to write board id=34: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Failed to write board id=67: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Stage 5b (sprint→issue): succeeded=0 failed=0
+[restore] Restore job done: jobId=2fed1ea1-3246-483d-9684-d8f627a792e8 status=complete_with_errors restored=15 skipped=47 failed=28
+2026-05-02T11:28:27.997Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:28.003Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:50.540Z GET /health
+2026-05-02T11:29:21.565Z GET /health
+
+_Sprint started. Role checkpoints below will update as work completes._
+
+---
+### Sprint 23 — Restore Reliability: Custom Fields & Auth | 2026-05-02 | ✅ Software Architect checkpoint (1/1 done)
+
+- ✅ Diagnose 400 errors on issue create with custom fields (◈ Standard, 3 SP)
+
+---
+### Sprint 23 — Restore Reliability: Custom Fields & Auth | 2026-05-02 | ✅ Backend Developer checkpoint (1/1 done)
+
+- ✅ Fix OAuth token refresh for board/sprint restore stage (◈ Standard, 3 SP)
+
+---
+### Sprint 23 — Restore Reliability: Custom Fields & Auth | 2026-05-02 | ✅ done | 16 SP
+**Goal:** Of course, restores are still not working correctly. Here is the log: 
+
+2026-05-02T11:28:09.648Z POST /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup
+[restore] pre-validation: backupPointId=aef63f48-f50a-44f6-916d-e3767a0a3ddb targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 effectiveCloudId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) basketSize=90
+[validation] starting: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 targetProjectKey=(none) restoreMode=original basketSize=90
+[validation] check=OAUTH_TOKEN_VALIDITY passed=true targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_EXISTENCE passed=true targetProjectKey=(none) targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=TARGET_PROJECT_ARCHIVE_STATUS passed=true targetProjectKey=(none)
+[validation] check=JIRA_SOFTWARE_ACTIVE passed=true targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[validation] check=WORKFLOW_STATUS_NAMES passed=true warnings=false
+[validation] check=CUSTOM_FIELD_PRESENCE_REQUIRED passed=true
+[validation] check=ATTACHMENT_SIZE passed=true
+[validation] all checks passed: targetSiteId=e2f3e272-f44d-4fee-a2c9-48573056d476 warnings=0
+[restore] post-validation: passed=true warnings=0
+2026-05-02T11:28:12.676Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:12.682Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-5: Request failed with status code 400
+[restore] Failed to write issue id=10077: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-6: Request failed with status code 400
+[restore] Failed to write issue id=10082: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-7: Request failed with status code 400
+[restore] Failed to write issue id=10087: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-8: Request failed with status code 400
+[restore] Failed to write issue id=10088: ERR_BAD_REQUEST — Request failed with status code 400
+2026-05-02T11:28:16.000Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:16.007Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Issue create with custom fields failed (400), retrying without custom fields for TS-9: Request failed with status code 400
+[restore] Failed to write issue id=10089: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-2: Request failed with status code 400
+[restore] Failed to write issue id=10074: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-3: Request failed with status code 400
+[restore] Failed to write issue id=10075: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-4: Request failed with status code 400
+[restore] Failed to write issue id=10076: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-1: Request failed with status code 400
+[restore] Failed to write issue id=10073: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-7: Request failed with status code 400
+2026-05-02T11:28:19.008Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:19.009Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+[restore] Failed to write issue id=10080: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-8: Request failed with status code 400
+2026-05-02T11:28:19.558Z GET /health
+[restore] Failed to write issue id=10081: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-9: Request failed with status code 400
+[restore] Failed to write issue id=10083: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-10: Request failed with status code 400
+[restore] Failed to write issue id=10084: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-11: Request failed with status code 400
+[restore] Failed to write issue id=10085: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-12: Request failed with status code 400
+[restore] Failed to write issue id=10086: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-13: Request failed with status code 400
+2026-05-02T11:28:21.996Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:21.997Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Failed to write issue id=10090: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-14: Request failed with status code 400
+[restore] Failed to write issue id=10091: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-15: Request failed with status code 400
+[restore] Failed to write issue id=10092: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-16: Request failed with status code 400
+[restore] Failed to write issue id=10093: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-17: Request failed with status code 400
+[restore] Failed to write issue id=10094: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-18: Request failed with status code 400
+[restore] Failed to write issue id=10095: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-19: Request failed with status code 400
+[restore] Failed to write issue id=10096: ERR_BAD_REQUEST — Request failed with status code 400
+2026-05-02T11:28:24.991Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:24.992Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-20: Request failed with status code 400
+[restore] Failed to write issue id=10097: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-21: Request failed with status code 400
+[restore] Failed to write issue id=10098: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Issue create with custom fields failed (400), retrying without custom fields for KS-22: Request failed with status code 400
+[restore] Failed to write issue id=10099: ERR_BAD_REQUEST — Request failed with status code 400
+[restore] Stage 3b (issue links): succeeded=0 failed=0
+[restore] Failed to write board id=1: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Failed to write board id=34: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Failed to write board id=67: AUTH_ERROR — Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[restore] Stage 5b (sprint→issue): succeeded=0 failed=0
+[restore] Restore job done: jobId=2fed1ea1-3246-483d-9684-d8f627a792e8 status=complete_with_errors restored=15 skipped=47 failed=28
+2026-05-02T11:28:27.997Z GET /api/v1/integrations/c08a1b3b-63b9-465e-bda3-334492e71ae9/restore-backup/2fed1ea1-3246-483d-9684-d8f627a792e8
+2026-05-02T11:28:28.003Z GET /api/v1/jobs/2fed1ea1-3246-483d-9684-d8f627a792e8/progress
+2026-05-02T11:28:50.540Z GET /health
+2026-05-02T11:29:21.565Z GET /health
+
+**Delivered:**
+- ✅ Diagnose 400 errors on issue create with custom fields — Software Architect (◈ Standard, 3 SP)
+- ✅ Sanitize custom fields and stripped-field payload before issue create — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix OAuth token refresh for board/sprint restore stage — Backend Developer (◈ Standard, 3 SP)
+- ✅ Surface per-issue restore failure reasons in UI — Frontend Developer (⚡ Quick, 2 SP)
+- ✅ End-to-end QA: full restore of KS project with zero failures — Qa Engineer (◈ Standard, 3 SP)
+
+---
