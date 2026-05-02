@@ -3575,3 +3575,43 @@ _Sprint started. Role checkpoints below will update as work completes._
 - ✅ Regression tests: instance-header fix and scope-warning rendering — Qa Engineer (◈ Standard, 4 SP)
 
 ---
+### Sprint 3 — OAuth Refresh Hardening & Custom-Field RCA | 2026-05-02 | ✅ done | 20 SP
+**Goal:** This recommendation: 
+
+(1) Re-open the custom-fields and OAuth-refresh tickets as a Sprint 24 hotfix, capturing the raw 400 response body and the rejected token's scopes/expiry for root-cause analysis. (2) Reconcile the QA evidence with the production log — confirm whether QA exercised the same custom-field schema and a token-refresh path, and add regression tests that fail on any `complete_with_
+
+Also, when I do backup I see these logs - where it sayw it cannot authenticate, when I'm authenticated. 
+
+[backup] Enumerated 1 project(s) from Jira API for integration 2ff72b4e-7e74-40b6-8f91-523163bb2e3c
+[backup] phase=backup_project integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c projectKey=SCRUM
+[jql] start: integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c jql="project="SCRUM" AND updated>="2026-05-02 14:16" ORDER BY updated ASC" total=unknown
+[jql] page: pageIndex=1 startAt=0 issuesOnPage=0 runningTotal=0
+[jql] end: integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c totalFetched=0 pagesTraversed=1 durationMs=412
+[backup] phase=site_enumeration integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c
+[siteEnum] enumerating workflows for cloudId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[siteEnum] enumerating custom fields for cloudId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[siteEnum] custom fields enumerated: count=55
+[siteEnum] workflows enumerated: count=3
+[siteEnum] enumerating contexts for 11 custom fields
+[siteEnum] enumerating boards for cloudId=e2f3e272-f44d-4fee-a2c9-48573056d476
+[siteEnum] boards enumerated: count=1
+[siteEnum] board config fetch skipped for boardId=1: Atlassian rejected both the original and refreshed access token. Please reconnect the integration from the Connections page.
+[siteEnum] sprints enumerated: count=0
+[backup] phase=persisting integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c
+[backup] Backup record persisted: jobId=3bdca614-cd6f-422d-954a-f5359c93907b connectionId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c
+[backup] phase=finalizing integrationId=2ff72b4e-7e74-40b6-8f91-523163bb2e3c
+2026-05-02T14:20:15.935Z GET /api/v1/integrations/2ff72b4e-7e74-40b6-8f91-523163bb2e3c/backup/2574957f-d5a8-4d40-b7cb-e2b74d83c506
+2026-05-02T14:20:15.938Z GET /api/v1/jobs/2574957f-d5a8-4d40-b7cb-e2b74d83c506/progress
+2026-05-02T14:20:15.951Z GET /api/connections/2ff72b4e-7e74-40b6-8f91-523163bb2e3c/backups
+2026-05-02T14:20:25.528Z GET /health
+2
+
+**Delivered:**
+- ✅ Capture raw 400 body and token diagnostics on Atlassian API failures — Backend Developer (◉ Deep, 5 SP)
+- ✅ Re-open Sprint 24 hotfix tickets and document RCA framing — Software Architect (⚡ Quick, 2 SP)
+- ✅ Reconcile QA evidence with production failure modes; add custom-field schema regression tests — Qa Engineer (◉ Deep, 5 SP)
+- ✅ Fix backup-phase token-refresh path used by siteEnum board fetch — Backend Developer (◈ Standard, 3 SP)
+- ✅ Surface backup-phase scope/auth warnings in Connections UI — Frontend Developer (⚡ Quick, 2 SP)
+- ✅ Verify and complete backup-phase token-refresh fix for siteEnum board fetch — Backend Developer (◈ Standard, 3 SP)
+
+---
