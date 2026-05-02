@@ -3200,3 +3200,29 @@ You have all the means to test if this is working as I have also provided you wi
 - ✅ QA: end-to-end restore validation for project KS and MISSING_PROJECT_KEY regression — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 22 — Comprehensive Backup & Restore Coverage | 2026-05-02 | ⏳ in progress | 20 SP est.
+**Goal:** When doing restores - you are just creating a new issue without a clear referrence on what it was - there is only ID
+I don't think you are backing up all fields ever. I want you to backup every single field that is configured in the custom fields list, wll that you have access to from the integration with JIRA. There are 56 custom fields!
+You are also neither backing up or restoring - boards, sprints, attachments, links of issues etc... why?
+
+_Sprint started. Role checkpoints below will update as work completes._
+
+---
+### Sprint 22 — Comprehensive Backup & Restore Coverage | 2026-05-02 | ◐ Software Architect checkpoint (0/1 done)
+
+- ❌ Architect comprehensive backup/restore coverage for all Jira object types (◈ Standard, 3 SP)
+
+---
+### Sprint 22 — Comprehensive Backup & Restore Coverage | 2026-05-02 | ❌ failed | 20 SP
+**Goal:** When doing restores - you are just creating a new issue without a clear referrence on what it was - there is only ID
+I don't think you are backing up all fields ever. I want you to backup every single field that is configured in the custom fields list, wll that you have access to from the integration with JIRA. There are 56 custom fields!
+You are also neither backing up or restoring - boards, sprints, attachments, links of issues etc... why?
+
+**Delivered:**
+- ❌ Architect comprehensive backup/restore coverage for all Jira object types — Software Architect (◈ Standard, 3 SP)
+- ⏭ Backup all custom fields and full issue field payload + original-key reference on restore — Backend Developer (◉ Deep, 5 SP)
+- ⏭ Implement backup and restore for Boards, Sprints, Attachments, and Issue Links — Backend Developer (◉ Deep, 8 SP)
+- ❌ Surface original-key and richer restore status in restore UI — Frontend Developer (⚡ Quick, 2 SP)
+- ⏭ End-to-end QA: full-field, boards, sprints, attachments, links restore on KS project — Qa Engineer (⚡ Quick, 2 SP)
+
+---
