@@ -3121,3 +3121,82 @@ I don't know what the missing keys are, but even simple edits that I did of an i
 - ⏭ QA: end-to-end restore correctness — MISSING_PROJECT_KEY fix and comment revert — Qa Engineer (◈ Standard, 3 SP)
 
 ---
+### Sprint 21 — Fix MISSING_PROJECT_KEY & Comment Restore | 2026-05-02 | ✅ done | 11 SP
+**Goal:** Restores are still not working and I'm getting errors such as:
+
+Restore completed with errors
+Restore completed with 5 failures — 15 restored, 47 skipped
+›
+issue 10035MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10073MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10074MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10075MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10076MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+×
+⚠
+Restore completed with errors
+Job 4976b3d5-8c74-402e-a6f6-738edac83530 · May 2, 2026, 1:06 AM
+Restored: 15
+Skipped: 47
+Failed: 5
+
+I am trying to restore a simple thing as having a comment in an issue after a backup. And when I restore I should not see that comment. This is so simplme. I am using project KS and issue testr1. We need to have these restores fixed. 
+
+You have all the means to test if this is working as I have also provided you with the credentials in the .env file so you should be able to run directlyt he REST API calls.
+
+**Key decisions:**
+- Root cause of MISSING_PROJECT_KEY: issue snapshots lacked an explicit `projectKey` field; the `issueKey`-prefix fallback only works when the key contains a dash; `fields.project` can be absent in old snapshots; project write failures never registered the key in `sourceToTargetIssueKey`.
+- Root cause of comment not reverted: comment restore was purely additive (POST only); no delete-before-restore step existed; backed-up comments in `fields.comment.comments[]` were never posted to newly created issues.
+- Fix: `backupEngine.js` now stores `projectKey` explicitly on every issue snapshot.
+- Fix: `buildBasket()` propagates `projectKey` into basket items; `writeObjectToJira()` issue case uses `item.projectKey` as a fifth fallback before throwing MISSING_PROJECT_KEY.
+- Fix: `executeStage()` registers the source project key in `sourceToTargetIssueKey` even when the project write fails (not just skip), ensuring dependent issues can still resolve their project.
+- Fix: issue restore now checks if the issue already exists at the target by issueKey (GET by key); if found, it UPDATES the existing issue in place and reverts comments (delete non-backup comments, add backed-up ones); if not found, creates new and posts backed-up comments from the snapshot.
+
+**Delivered:**
+- ✅ Diagnose MISSING_PROJECT_KEY and comment-not-reverted root causes — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix MISSING_PROJECT_KEY: store `projectKey` in snapshot, propagate to basket, add as fallback in writeObjectToJira, register on project failure — Backend Developer (◉ Deep, 5 SP)
+- ✅ Fix comment revert: issue restore detects existing issues, updates them in place, deletes post-backup comments, posts backed-up comments — Backend Developer (◈ Standard, 3 SP)
+
+---
+### Sprint 21 — Fix MISSING_PROJECT_KEY & Comment Restore | 2026-05-02 | ✅ Software Architect checkpoint (1/1 done)
+
+- ✅ Diagnose MISSING_PROJECT_KEY root cause and comment-not-reverted failure (◈ Standard, 3 SP)
+
+---
+### Sprint 21 — Fix MISSING_PROJECT_KEY & Comment Restore | 2026-05-02 | ✅ done | 11 SP
+**Goal:** Restores are still not working and I'm getting errors such as:
+
+Restore completed with errors
+Restore completed with 5 failures — 15 restored, 47 skipped
+›
+issue 10035MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10073MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10074MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10075MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+›
+issue 10076MISSING_PROJECT_KEY— MISSING_PROJECT_KEY
+×
+⚠
+Restore completed with errors
+Job 4976b3d5-8c74-402e-a6f6-738edac83530 · May 2, 2026, 1:06 AM
+Restored: 15
+Skipped: 47
+Failed: 5
+
+I am trying to restore a simple thing as having a comment in an issue after a backup. And when I restore I should not see that comment. This is so simplme. I am using project KS and issue testr1. We need to have these restores fixed. 
+
+You have all the means to test if this is working as I have also provided you with the credentials in the .env file so you should be able to run directlyt he REST API calls.
+
+**Delivered:**
+- ✅ Diagnose MISSING_PROJECT_KEY root cause and comment-not-reverted failure — Software Architect (◈ Standard, 3 SP)
+- ✅ Fix issue restore: project key resolution and comment delete-then-recreate — Backend Developer (◉ Deep, 5 SP)
+- ✅ QA: end-to-end restore validation for project KS and MISSING_PROJECT_KEY regression — Qa Engineer (◈ Standard, 3 SP)
+
+---

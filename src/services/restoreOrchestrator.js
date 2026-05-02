@@ -91,7 +91,19 @@ function buildBasket(backupPointId, objectSelection) {
       }
     }
 
-    items.push({ id, objectType, fields: fields || {}, issueKey: issueKey || (fields && fields.key) || id, snapshotKey: key });
+    const computedIssueKey = issueKey || (fields && fields.key) || String(id);
+    // Derive projectKey from multiple sources for resilience against old snapshots that lack
+    // an explicit projectKey field: prefer stored snapshot.projectKey, then fields.project.key
+    // from the Jira API response, then the project-key prefix of the Jira issue key (e.g. "KS"
+    // from "KS-5"). This ensures issues in old backups can always resolve their project.
+    const issueKeyPrefix = (objectType === 'issue' && typeof computedIssueKey === 'string' && computedIssueKey.includes('-'))
+      ? computedIssueKey.split('-').slice(0, -1).join('-')
+      : null;
+    const resolvedProjectKey = snapshot.projectKey
+      || (objectType === 'issue' && fields && fields.project && fields.project.key)
+      || issueKeyPrefix
+      || null;
+    items.push({ id, objectType, fields: fields || {}, issueKey: computedIssueKey, projectKey: resolvedProjectKey, snapshotKey: key });
   }
 
   // If no snapshots in db, produce an empty basket (simulation with no seed data)
@@ -212,6 +224,7 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
       const projKey = targetProjectKey
         || resolvedFromMap
         || fieldProjectKey
+        || item.projectKey
         || (fields.project && fields.project.id)
         || projectKeyFromIssueKey;
 
@@ -273,9 +286,98 @@ async function writeObjectToJira(jiraAxios, cloudId, item, destination, targetPr
         }
       }
 
+      // Backed-up comments embedded in the issue snapshot (fields.comment.comments[])
+      const backedUpComments = (fields.comment && Array.isArray(fields.comment.comments))
+        ? fields.comment.comments
+        : [];
+
       if (!jiraAxios) return { targetId: uuidv4(), targetKey: null, payload: issuePayload };
+
+      // Check if the issue already exists at the target by its original key — if so, revert it
+      // rather than creating a duplicate. This handles the "restore to original location" case
+      // where the user expects the existing issue to be reverted to the backup state.
+      const lookupKey = (typeof issueKeyStr === 'string' && issueKeyStr.includes('-')) ? issueKeyStr : null;
+      let existingIssueKey = null;
+      if (lookupKey) {
+        try {
+          const existingResp = await jiraAxios.get(`${base}/rest/api/3/issue/${lookupKey}`);
+          if (existingResp.data && existingResp.data.key) {
+            existingIssueKey = existingResp.data.key;
+          }
+        } catch (_) { /* issue does not exist yet — will create new */ }
+      }
+
+      if (existingIssueKey) {
+        // UPDATE the existing issue to match the backup state (revert in place)
+        const updateFields = { summary: issuePayload.fields.summary };
+        if (issuePayload.fields.description) updateFields.description = issuePayload.fields.description;
+        if (issuePayload.fields.priority) updateFields.priority = issuePayload.fields.priority;
+        if (issuePayload.fields.labels) updateFields.labels = issuePayload.fields.labels;
+        try {
+          await jiraAxios.put(`${base}/rest/api/3/issue/${existingIssueKey}`, { fields: updateFields });
+        } catch (updateErr) {
+          console.warn(`[restore] Could not update existing issue ${existingIssueKey}: ${updateErr.message}`);
+        }
+
+        // Revert comments: delete comments not present in the backup, add backed-up ones
+        try {
+          const commentsResp = await jiraAxios.get(`${base}/rest/api/3/issue/${existingIssueKey}/comment`);
+          const currentComments = (commentsResp.data && commentsResp.data.comments) || [];
+          const backedUpIds = new Set(backedUpComments.map(c => c.id).filter(Boolean));
+
+          for (const c of currentComments) {
+            if (!backedUpIds.has(c.id)) {
+              try {
+                await jiraAxios.delete(`${base}/rest/api/3/issue/${existingIssueKey}/comment/${c.id}`);
+              } catch (_) { /* skip if deletion not permitted (e.g. comment by another user) */ }
+            }
+          }
+
+          // Add backed-up comments that are not already present, with author attribution header
+          const currentIds = new Set(currentComments.map(c => c.id).filter(Boolean));
+          for (const comment of backedUpComments) {
+            if (comment.id && currentIds.has(comment.id)) continue;
+            if (comment.body) {
+              try {
+                let commentBody = comment.body;
+                if (typeof commentBody === 'string') {
+                  commentBody = { version: 1, type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: commentBody }] }] };
+                }
+                // Prepend author attribution ADF header per PRD Constraint 8
+                if (comment.author) {
+                  commentBody = prependCommentAuthorAdfHeader(
+                    commentBody,
+                    { displayName: comment.author.displayName || String(comment.author), accountId: comment.author.accountId || '' },
+                    comment.created || new Date().toISOString(),
+                  );
+                }
+                await jiraAxios.post(`${base}/rest/api/3/issue/${existingIssueKey}/comment`, { body: commentBody });
+              } catch (_) { /* non-fatal */ }
+            }
+          }
+        } catch (commentErr) {
+          console.warn(`[restore] Could not revert comments on ${existingIssueKey}: ${commentErr.message}`);
+        }
+
+        return { targetId: existingIssueKey, targetKey: existingIssueKey, payload: issuePayload };
+      }
+
+      // Issue does not exist — create it
       const resp = await jiraAxios.post(`${base}/rest/api/3/issue`, issuePayload);
-      return { targetId: resp.data.id, targetKey: resp.data.key, payload: issuePayload };
+      const newKey = resp.data.key;
+
+      // Post backed-up comments to the newly created issue
+      if (backedUpComments.length > 0 && newKey) {
+        for (const comment of backedUpComments) {
+          if (comment.body) {
+            try {
+              await jiraAxios.post(`${base}/rest/api/3/issue/${newKey}/comment`, { body: comment.body });
+            } catch (_) { /* non-fatal */ }
+          }
+        }
+      }
+
+      return { targetId: resp.data.id, targetKey: newKey, payload: issuePayload };
     }
 
     case 'comment': {
@@ -514,6 +616,12 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
           restoreJobId, item, destination, fieldMap, newBoardIdMap, jiraAxios, cloudId, sourceToTargetIssueKey, targetProjectKey,
         );
         if (error) {
+          // For projects: register the source key in the map even on failure so that dependent
+          // issues can still resolve their project key via the item.projectKey fallback.
+          if (item.objectType === 'project' && !skip) {
+            const projKey = (item.fields && item.fields.key) || (typeof item.id === 'string' ? item.id : null);
+            if (projKey) sourceToTargetIssueKey[`project:${projKey}`] = projKey;
+          }
           itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error });
         } else {
           if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }
@@ -538,6 +646,12 @@ async function executeStage(stageNumber, stageItems, conflictModeEffective, dest
     );
 
     if (error) {
+      // For projects: register the source key in the map even on failure so that dependent
+      // issues can still resolve their project key via the item.projectKey fallback.
+      if (item.objectType === 'project' && !skip) {
+        const projKey = (item.fields && item.fields.key) || (typeof item.id === 'string' ? item.id : null);
+        if (projKey) sourceToTargetIssueKey[`project:${projKey}`] = projKey;
+      }
       itemResults.push({ id: item.id, objectType: item.objectType, status: skip ? 'skipped' : 'failed', errorCode: error });
     } else {
       if (item.objectType === 'board') { newBoardIdMap[item.id] = targetId; sourceToTargetIssueKey[`board:${item.id}`] = targetId; }

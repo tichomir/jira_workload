@@ -232,6 +232,7 @@ async function runIntegrationBackup(integrationId, jobId) {
         id: issueId,
         fields: issue.fields || {},
         issueKey: issue.key,
+        projectKey: (issue.fields && issue.fields.project && issue.fields.project.key) || pr.projectKey,
       });
       db.searchIssues.set(`${backupPointId}:${issueId}`, {
         id: issueId,
